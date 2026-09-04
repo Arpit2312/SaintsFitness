@@ -176,7 +176,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 4: Database schema (Prisma + Neon) ✅ DONE (commit f6335e0 — prisma/@prisma/client pinned to exact 6.19.3, npm "latest" resolves to an incompatible 8.0.0-rc pre-release CLI and 7.10.0 drops classic datasource.url syntax; do NOT `npm i prisma@latest` in a later task without re-checking this. Follow-up noted but not yet done: non-unique FK columns (Payment.studentId, Attendance.batchId, etc.) have no index — cheap to add later before real data volume.)
+## Task 4: Database schema (Prisma + Neon) ✅ DONE (commit f6335e0, amended in d8606e5 — Account model was missing an `issuer` field that better-auth actually requires, causing sign-in to fail; see the Account.issuer schema comment and migration 20260904151500_add_account_issuer — prisma/@prisma/client pinned to exact 6.19.3, npm "latest" resolves to an incompatible 8.0.0-rc pre-release CLI and 7.10.0 drops classic datasource.url syntax; do NOT `npm i prisma@latest` in a later task without re-checking this. Follow-up noted but not yet done: non-unique FK columns (Payment.studentId, Attendance.batchId, etc.) have no index — cheap to add later before real data volume.)
 
 **Files:**
 - Create: `prisma/schema.prisma`
