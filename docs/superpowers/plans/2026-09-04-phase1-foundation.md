@@ -1061,7 +1061,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 9: App shell — sidebar, header, protected layout
+## Task 9: App shell — sidebar, header, protected layout ✅ DONE (commit e0bcfd2, fixed active-route matching + IST-pinned greeting in 93fb135 — see src/lib/nav.ts and header.tsx's currentHourInIST())
 
 **Files:**
 - Create: `src/components/layout/sidebar.tsx`
