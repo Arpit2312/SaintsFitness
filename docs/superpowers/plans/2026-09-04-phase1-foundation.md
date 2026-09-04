@@ -2447,7 +2447,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 14: Student validation schema + unit tests
+## Task 14: Student validation schema + unit tests ✅ DONE (commit 4d8e188, expanded test coverage in 856026f — original 5 tests never exercised emergency contact or optional-parent-field omission)
 
 **Files:**
 - Create: `src/lib/validations/student.ts`
