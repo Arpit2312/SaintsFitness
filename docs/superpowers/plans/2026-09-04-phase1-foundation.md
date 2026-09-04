@@ -747,19 +747,19 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 7: Seed script
+## Task 7: Seed script ✅ DONE (commit 0eadfb5, then fixes in [pending] — the initial `Account.create` below omitted `issuer`, which better-auth's credential provider requires; fixed by adding `issuer: "local:credential"`. Also, `seedAdmin` and `seedAcademyData` originally issued their multi-step writes as separate unguarded calls, so a mid-run failure — e.g. `User.create` succeeding but `Account.create` failing — left partial state that the idempotency checks (`findUnique`, `Course.count() > 0`) couldn't detect on the next run, permanently masking the gap. Fixed by wrapping each function's writes in `prisma.$transaction(...)` (an interactive transaction for `seedAcademyData`, since later creates reference IDs from earlier ones in the same call) so a partial failure commits nothing and the next run retries cleanly.)
 
 **Files:**
 - Create: `prisma/seed.ts`
 - Modify: `package.json` (prisma seed config)
 
-- [ ] **Step 1: Install `tsx` to run the TypeScript seed script**
+- [x] **Step 1: Install `tsx` to run the TypeScript seed script**
 
 ```bash
 npm install -D tsx
 ```
 
-- [ ] **Step 2: Add the seed config to `package.json`**
+- [x] **Step 2: Add the seed config to `package.json`**
 
 ```json
 "prisma": {
@@ -767,7 +767,7 @@ npm install -D tsx
 }
 ```
 
-- [ ] **Step 3: Write `prisma/seed.ts`**
+- [x] **Step 3: Write `prisma/seed.ts`**
 
 **Note:** Task 6 disabled Better Auth's `emailAndPassword.disableSignUp` to close a public self-signup vulnerability (verified: it blocks `auth.api.signUpEmail()` too, not just the HTTP route — same handler, same check). So the admin user must be created via direct Prisma writes using Better Auth's own password hasher, not via `auth.api.signUpEmail()`:
 
@@ -877,11 +877,11 @@ main()
   .finally(() => prisma.$disconnect());
 ```
 
-- [ ] **Step 4: Set `ADMIN_SEED_PASSWORD` in `.env`**
+- [x] **Step 4: Set `ADMIN_SEED_PASSWORD` in `.env`**
 
 Pick a strong password and set `ADMIN_SEED_PASSWORD="<your password>"` in `.env`. Do not commit this file.
 
-- [ ] **Step 5: Run the seed script**
+- [x] **Step 5: Run the seed script**
 
 ```bash
 npx prisma db seed
@@ -889,7 +889,7 @@ npx prisma db seed
 
 Expected: "Seeded admin user: arpitagrggc@gmail.com" and "Seeded sample courses, instructors, and batches." printed with no errors.
 
-- [ ] **Step 6: Verify with Prisma Studio**
+- [x] **Step 6: Verify with Prisma Studio**
 
 ```bash
 npx prisma studio
@@ -897,7 +897,7 @@ npx prisma studio
 
 Confirm one `User` row, 3 `Course` rows, 2 `Instructor` rows, 3 `Batch` rows exist. Close Prisma Studio.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add -A
