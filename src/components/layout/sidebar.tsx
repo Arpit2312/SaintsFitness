@@ -17,6 +17,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { isActiveRoute } from "@/lib/nav";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -54,7 +55,7 @@ export function Sidebar() {
       <div className="gold-divider mx-4" />
       <nav className="flex-1 space-y-1 p-3">
         {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-          const active = pathname.startsWith(href.split("/").slice(0, 2).join("/"));
+          const active = isActiveRoute(pathname, href);
           return (
             <Link
               key={href}
