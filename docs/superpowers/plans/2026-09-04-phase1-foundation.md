@@ -48,7 +48,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 2: Install and configure shadcn/ui
+## Task 2: Install and configure shadcn/ui ✅ DONE (commit 00afd3b — note: shadcn's "form" component is deprecated upstream, installed "field"+"separator" as the replacement; not used by any later task's code, which calls react-hook-form's register() directly)
 
 **Files:**
 - Create: `components.json`, `src/components/ui/*` (generated)
@@ -86,7 +86,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 3: Apply the SAINTS visual theme
+## Task 3: Apply the SAINTS visual theme ✅ DONE (commits 069b9564, df4e65c — fixed --color-muted in follow-up)
 
 **Files:**
 - Modify: `src/app/globals.css`
@@ -176,7 +176,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 4: Database schema (Prisma + Neon)
+## Task 4: Database schema (Prisma + Neon) ✅ DONE (commit f6335e0 — prisma/@prisma/client pinned to exact 6.19.3, npm "latest" resolves to an incompatible 8.0.0-rc pre-release CLI and 7.10.0 drops classic datasource.url syntax; do NOT `npm i prisma@latest` in a later task without re-checking this. Follow-up noted but not yet done: non-unique FK columns (Payment.studentId, Attendance.batchId, etc.) have no index — cheap to add later before real data volume.)
 
 **Files:**
 - Create: `prisma/schema.prisma`
