@@ -41,6 +41,16 @@ Fee plans/payments/receipts, attendance marking, WhatsApp reminders, reports, SA
 - **Hosting:** Vercel, deployed from a GitHub repo
 - **Testing:** Vitest (unit), Playwright (one E2E smoke test)
 
+## Cost
+
+Everything in this stack is free with no credit card on file, verified 2026-09:
+
+- **Vercel Hobby** (hosting + Vercel Blob for photos): free forever, no card. Has no overage-billing mechanism at all — exceeding a limit (100GB transfer, 1M function invocations, 1GB Blob storage, etc./month) pauses that feature for ~30 days rather than charging anything.
+- **Neon** (Postgres): permanent free tier, 0.5GB storage, 100 compute-hours/month, no card. Hitting a limit suspends compute until the next cycle — never a charge.
+- GitHub, Auth.js, Vitest, Playwright, `wa.me` WhatsApp links: free/open-source, no cost.
+
+**Known caveat (accepted):** Vercel's Hobby plan terms specify personal/non-commercial use; SAINTS is a paying studio's business tool, which is technically outside that scope. This carries no billing risk (Hobby cannot bill you), only a small risk Vercel could ask the project to upgrade or pause if it's flagged — enforcement for small internal business tools is loose in practice. Accepted as a reasonable trade-off for the simplicity of Vercel's native Next.js support. If this becomes a concern later, Phase-1-and-later work can migrate hosting to Cloudflare Pages + Supabase without a schema rewrite, since Prisma abstracts the DB layer.
+
 ## Admin account
 
 Seeded on first deploy:
