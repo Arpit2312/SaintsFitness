@@ -1364,7 +1364,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 11: Classes & Batches — tab layout + Courses CRUD
+## Task 11: Classes & Batches — tab layout + Courses CRUD ✅ DONE (commit 938247e, fixed a real bug in the "hardened" dismissal-guard in 2f12f7f — the prior fix skipped the parent onOpenChange but base-ui's Dialog still closed via Escape/backdrop anyway; needed eventDetails.cancel() — then extracted into src/hooks/use-guarded-dialog.ts with a regression test in 4dc9fd1. Also fixed a stale react-hook-form defaultValues bug on the reused dialog instance (see course-form-dialog.tsx's useEffect+reset()).)
 
 **Files:**
 - Create: `src/lib/validations/course.ts`
