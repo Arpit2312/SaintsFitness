@@ -2776,7 +2776,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 16: Student photo upload (Vercel Blob)
+## Task 16: Student photo upload (Vercel Blob) ⏸ DEFERRED (2026-09-05) — user doesn't have a Vercel Blob store token yet. Skipped for now; Tasks 17-23 proceed without it since Student.photoUrl is optional everywhere (list/profile pages just show the initial-letter Avatar fallback when null). Task 18's form was rewritten to omit the PhotoUpload integration. Come back to this task once a token is available, then re-add PhotoUpload to student-form.tsx per the note at the top of Task 18.
 
 **Files:**
 - Create: `src/app/api/students/photo-upload/route.ts`
@@ -2900,25 +2900,18 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ## Task 17: Student list page
 
-**IMPORTANT — data fetching pattern has changed since this plan was written; do NOT copy the `"use client"` + `useEffect`-fetch inline snippet below verbatim.** As with Courses/Instructors/Batches (see the annotation on Task 13), the list of students itself must come from a Server Component via `await listStudents(...)`, not from client-side `useState`/`useEffect`. Follow `src/app/(app)/classes/courses/page.tsx` + `src/components/classes/courses-list.tsx` as the reference split: `src/app/(app)/students/page.tsx` is a plain async Server Component, and a new `src/components/students/students-list.tsx` (or similar) is the `"use client"` piece.
-
-This page is different from Courses/Instructors/Batches in one respect: it has **client-side search/filter state** (`search`, `status`, `batchId`) that the original snippet used to re-run `listStudents({...})` server-side on every debounced keystroke via a client `useEffect`. That pattern is judged out of scope to force into full "idiomatic" URL-search-param server refetching for Phase 1:
-
-- **Decision: keep search/status/batch filtering client-side, over a single server-fetched list.** The Server Component fetches the *full* active-student list once (`await listStudents()`, no filter args — or drop the `search`/`status`/`batchId` params from `listStudents` server-side filtering entirely if nothing else calls it with filters), passes it as a `students` prop, and the `"use client"` list component does `useState` for `search`/`status`/`batchId` and filters the array in-memory (e.g. via `useMemo`) on every keystroke/selection change. No `router.refresh()`, no URL search params, and no server round-trip are needed for filtering — only mutations (if any land later on this page) would call `router.refresh()`.
-- **Why this is acceptable, not a shortcut:** Phase 1 targets a single dance academy with dozens to low hundreds of students — small enough that shipping the whole list to the client and filtering there is fast, simple, and avoids a class of bugs (debounce races, stale closures in a `useEffect` deps array, loading flicker) that the URL-search-param approach would introduce for no real benefit at this scale. If the student base ever grows enough that shipping the full list becomes a real cost, revisit with `?search=&status=&batchId=` URL params read via `useSearchParams()`/`searchParams` prop on the Server Component page and a debounced `router.push`/`replace` — but do not build that machinery preemptively.
-- This is a client-state-only concern; it does not change the mutation-refresh pattern. If Task 17 or a later task adds create/edit/delete actions to this page (e.g. bulk actions), those still follow the Task 13 pattern: call the server action, then `router.refresh()` to get fresh data from the Server Component, same as Courses/Instructors/Batches.
-
-**IMPORTANT — read/write file split: `listStudents` now lives in `src/lib/queries/students.ts` (see Task 15's follow-up note), not `src/actions/students.ts`.** Import it from `@/lib/queries/students` in the Server Component. Same for the batch-options dropdown: the Step 1 snippet below imports `listBatchOptions` from `@/actions/batches` and calls it directly in a `"use client"` `useEffect` (`listBatchOptions().then(setBatches)`) — that's the exact footgun this whole file split exists to prevent, and once `listBatchOptions` moves to `src/lib/queries/batches.ts` (per Task 13's follow-up note) that client-side call fails at build time. Fetch `listBatchOptions()` in the Server Component alongside `listStudents()` and pass the result down as a `batches` prop to the `"use client"` list component, the same way `students` is passed down.
+**Architecture decision (already reflected in the code below): search/status/batch filtering stays client-side, over a single server-fetched list.** The Server Component fetches the full active-student list once (`await listStudents()`, no filter args) and the full batch option list, passes both down as props; the `"use client"` list component holds `search`/`status`/`batchId` state and filters in-memory via `useMemo` — no `router.refresh()`, no URL params, no server round-trip per keystroke. This is a deliberate choice for Phase 1's scale (a single academy, dozens to low hundreds of students) that avoids a class of bugs (debounce races, stale closures, loading flicker) the URL-search-param approach would introduce for no real benefit here. If the student base grows enough that shipping the full list becomes a real cost, revisit with `?search=&status=&batchId=` URL params — don't build that preemptively. This doesn't change the mutation-refresh pattern: any future create/edit/delete on this page still calls the server action then `router.refresh()`, same as Courses/Instructors/Batches.
 
 **Files:**
 - Create: `src/app/(app)/students/page.tsx`
+- Create: `src/components/students/students-list.tsx`
 
-- [ ] **Step 1: Write `src/app/(app)/students/page.tsx`**
+- [ ] **Step 1: Write `src/components/students/students-list.tsx`**
 
 ```tsx
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Plus, Users, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -2933,8 +2926,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { EmptyState } from "@/components/shared/empty-state";
-import { listStudents } from "@/actions/students";
-import { listBatchOptions } from "@/actions/batches";
+import type { listStudents } from "@/lib/queries/students";
 import type { StudentStatus } from "@prisma/client";
 
 type StudentRow = Awaited<ReturnType<typeof listStudents>>[number];
@@ -2945,31 +2937,29 @@ const STATUS_COLORS: Record<StudentStatus, string> = {
   LEFT: "border-danger text-danger",
 };
 
-export default function StudentsPage() {
-  const [students, setStudents] = useState<StudentRow[]>([]);
-  const [batches, setBatches] = useState<{ id: string; name: string }[]>([]);
+export function StudentsList({
+  students,
+  batches,
+}: {
+  students: StudentRow[];
+  batches: { id: string; name: string }[];
+}) {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StudentStatus | "ALL">("ALL");
   const [batchId, setBatchId] = useState<string>("ALL");
 
-  const refresh = useCallback(async () => {
-    setStudents(
-      await listStudents({
-        search: search || undefined,
-        status: status === "ALL" ? undefined : status,
-        batchId: batchId === "ALL" ? undefined : batchId,
-      })
-    );
-  }, [search, status, batchId]);
-
-  useEffect(() => {
-    listBatchOptions().then(setBatches);
-  }, []);
-
-  useEffect(() => {
-    const timeout = setTimeout(refresh, 250);
-    return () => clearTimeout(timeout);
-  }, [refresh]);
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return students.filter((student) => {
+      if (status !== "ALL" && student.status !== status) return false;
+      if (batchId !== "ALL" && !student.enrollments.some((e) => e.batchId === batchId)) return false;
+      if (q) {
+        const haystack = `${student.name} ${student.studentCode} ${student.mobile}`.toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [students, search, status, batchId]);
 
   return (
     <div className="space-y-4">
@@ -3004,9 +2994,13 @@ export default function StudentsPage() {
             <SelectItem value="LEFT">Left</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={batchId} onValueChange={setBatchId}>
+        <Select value={batchId} onValueChange={(v) => setBatchId(v as string)}>
           <SelectTrigger className="w-48">
-            <SelectValue placeholder="Batch" />
+            <SelectValue placeholder="Batch">
+              {(value: string) =>
+                value === "ALL" ? "All batches" : batches.find((b) => b.id === value)?.name ?? "Batch"
+              }
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">All batches</SelectItem>
@@ -3019,16 +3013,16 @@ export default function StudentsPage() {
         </Select>
       </div>
 
-      {students.length === 0 ? (
+      {filtered.length === 0 ? (
         <EmptyState
           icon={Users}
-          title="No students added yet."
-          actionLabel="+ Add Your First Student"
-          onAction={() => (window.location.href = "/students/new")}
+          title={students.length === 0 ? "No students added yet." : "No students match your filters."}
+          actionLabel={students.length === 0 ? "+ Add Your First Student" : undefined}
+          onAction={students.length === 0 ? () => (window.location.href = "/students/new") : undefined}
         />
       ) : (
         <div className="glass-card divide-y divide-card-border">
-          {students.map((student) => (
+          {filtered.map((student) => (
             <Link
               key={student.id}
               href={`/students/${student.id}`}
@@ -3057,7 +3051,21 @@ export default function StudentsPage() {
 }
 ```
 
-- [ ] **Step 2: Commit**
+- [ ] **Step 2: Write `src/app/(app)/students/page.tsx`**
+
+```tsx
+import { listStudents } from "@/lib/queries/students";
+import { listBatchOptions } from "@/lib/queries/batches";
+import { StudentsList } from "@/components/students/students-list";
+
+export default async function StudentsPage() {
+  const [students, batches] = await Promise.all([listStudents(), listBatchOptions()]);
+
+  return <StudentsList students={students} batches={batches} />;
+}
+```
+
+- [ ] **Step 3: Commit**
 
 ```bash
 git add -A
@@ -3070,9 +3078,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ## Task 18: Student new/edit form page
 
-**IMPORTANT — read/write file split: `student-form.tsx`'s batch dropdown cannot fetch its own options client-side.** The Step 1 snippet below imports `listBatchOptions` from `@/actions/batches` and calls it directly in a `"use client"` `useEffect` (`listBatchOptions().then(setBatches)`). Once `listBatchOptions` moves to `src/lib/queries/batches.ts` (Task 13's follow-up note), it is a server-only function, not a Server Action — it cannot be imported or called from client code at all, and the build will fail if it is. Fetch `listBatchOptions()` in the parent Server Component (`src/app/(app)/students/new/page.tsx` and `src/app/(app)/students/[id]/edit/page.tsx`) and pass the result down to `StudentForm` as a `batches` prop, the same way `getStudent(id)`'s result is passed down for the edit case. Also note `getStudent` itself now lives in `src/lib/queries/students.ts` (see Task 15's follow-up note), not `src/actions/students.ts`.
-
-**IMPORTANT — the Batch `<Select>` needs the children-function form of `SelectValue`, or it will silently display the raw batch ID instead of the batch name.** Task 13 discovered (and fixed, in `batch-form-dialog.tsx`) that base-ui's `<SelectValue />` only auto-resolves a label when the stored value and its display label are identical strings — `CourseFormDialog`'s Category select works by coincidence (`"Dance" === "Dance"`), but a batch's `batchId` (a cuid) is never equal to its display name, so a bare `<SelectValue placeholder="Select a batch" />` here would show something like `cmtmrb10e0004v2lw4zl7ojt5` instead of "Morning Zumba" once a batch is selected/on edit. Use the same pattern `batch-form-dialog.tsx` uses: `<SelectValue placeholder="Select a batch">{(value) => batches.find((b) => b.id === value)?.name ?? "Select a batch"}</SelectValue>` (or equivalent — check the exact children-function signature in the committed `batch-form-dialog.tsx` at the time you implement this, in case it's evolved). Also apply `v as string` to the Select's `onValueChange` handler if TypeScript flags the value as `string | null`, matching the same fix.
+**DEFERRED — Task 16 (Vercel Blob photo upload) is postponed until a Blob store token is available.** This section has been rewritten to build the student form WITHOUT photo upload for now — no `PhotoUpload` import, no `photoUrl` param passed to `createStudent`/`updateStudent` (they both accept `photoUrl` as optional, so simply omitting it is correct and safe). When Task 16 is eventually done, come back and: (1) add the `<PhotoUpload>` component to the top of the form, (2) add `photoUrl` state wired to it, (3) pass `photoUrl` through to `createStudent(data, photoUrl)`/`updateStudent(existing.id, data, photoUrl)`. Everything else below is otherwise final — already updated for the query/action split and the `SelectValue` label-resolution pattern from Tasks 13/15.
 
 **Files:**
 - Create: `src/components/students/student-form.tsx`
@@ -3100,22 +3106,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { PhotoUpload } from "@/components/students/photo-upload";
 import { toast } from "sonner";
-import { useEffect } from "react";
-import { listBatchOptions } from "@/actions/batches";
 
 type ExistingStudent = StudentInput & { id: string; photoUrl: string | null };
 
-export function StudentForm({ existing }: { existing?: ExistingStudent }) {
+export function StudentForm({
+  existing,
+  batches,
+}: {
+  existing?: ExistingStudent;
+  // Fetched by the parent Server Component (listBatchOptions from
+  // src/lib/queries/batches.ts) and passed down as a prop — this form
+  // cannot fetch it client-side since that function is server-only.
+  batches: { id: string; name: string }[];
+}) {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
-  const [photoUrl, setPhotoUrl] = useState<string | undefined>(existing?.photoUrl ?? undefined);
-  const [batches, setBatches] = useState<{ id: string; name: string }[]>([]);
-
-  useEffect(() => {
-    listBatchOptions().then(setBatches);
-  }, []);
 
   const {
     register,
@@ -3152,11 +3158,11 @@ export function StudentForm({ existing }: { existing?: ExistingStudent }) {
     setSubmitting(true);
     try {
       if (existing) {
-        await updateStudent(existing.id, data, photoUrl);
+        await updateStudent(existing.id, data);
         toast.success("Student updated");
         router.push(`/students/${existing.id}`);
       } else {
-        await createStudent(data, photoUrl);
+        await createStudent(data);
         toast.success("Student added");
         router.push("/students");
       }
@@ -3171,7 +3177,7 @@ export function StudentForm({ existing }: { existing?: ExistingStudent }) {
     return (
       <div className="space-y-2">
         <Label htmlFor={name}>{label}</Label>
-        <Input id={name} type={type} {...register(name)} />
+        <Input id={name} type={type} {...register(name)} disabled={submitting} />
         {errors[name] && <p className="text-sm text-danger">{errors[name]?.message as string}</p>}
       </div>
     );
@@ -3179,8 +3185,6 @@ export function StudentForm({ existing }: { existing?: ExistingStudent }) {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="max-w-3xl space-y-8">
-      <PhotoUpload initialUrl={photoUrl} onUploaded={setPhotoUrl} />
-
       <section className="glass-card space-y-4 p-6">
         <h2 className="font-medium text-gold">Basic Information</h2>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -3190,7 +3194,11 @@ export function StudentForm({ existing }: { existing?: ExistingStudent }) {
           {field("joiningDate", "Joining Date", "date")}
           <div className="space-y-2">
             <Label>Gender</Label>
-            <Select value={watch("gender")} onValueChange={(v) => setValue("gender", v as StudentInput["gender"])}>
+            <Select
+              value={watch("gender")}
+              onValueChange={(v) => setValue("gender", v as StudentInput["gender"])}
+              disabled={submitting}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -3203,7 +3211,11 @@ export function StudentForm({ existing }: { existing?: ExistingStudent }) {
           </div>
           <div className="space-y-2">
             <Label>Status</Label>
-            <Select value={watch("status")} onValueChange={(v) => setValue("status", v as StudentInput["status"])}>
+            <Select
+              value={watch("status")}
+              onValueChange={(v) => setValue("status", v as StudentInput["status"])}
+              disabled={submitting}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -3216,9 +3228,18 @@ export function StudentForm({ existing }: { existing?: ExistingStudent }) {
           </div>
           <div className="space-y-2">
             <Label>Batch</Label>
-            <Select value={watch("batchId")} onValueChange={(v) => setValue("batchId", v)}>
+            {/* SelectValue only auto-resolves a label when value === label; a
+                batchId is never equal to its display name, so the label must
+                be looked up explicitly (same pattern as batch-form-dialog.tsx). */}
+            <Select
+              value={watch("batchId")}
+              onValueChange={(v) => setValue("batchId", v as string)}
+              disabled={submitting}
+            >
               <SelectTrigger>
-                <SelectValue placeholder="Select a batch" />
+                <SelectValue placeholder="Select a batch">
+                  {(value: string) => batches.find((b) => b.id === value)?.name ?? "Select a batch"}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {batches.map((b) => (
@@ -3274,13 +3295,16 @@ export function StudentForm({ existing }: { existing?: ExistingStudent }) {
 - [ ] **Step 2: Write `src/app/(app)/students/new/page.tsx`**
 
 ```tsx
+import { listBatchOptions } from "@/lib/queries/batches";
 import { StudentForm } from "@/components/students/student-form";
 
-export default function NewStudentPage() {
+export default async function NewStudentPage() {
+  const batches = await listBatchOptions();
+
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold text-foreground">Add Student</h1>
-      <StudentForm />
+      <StudentForm batches={batches} />
     </div>
   );
 }
@@ -3291,6 +3315,7 @@ export default function NewStudentPage() {
 ```tsx
 import { notFound } from "next/navigation";
 import { getStudent } from "@/lib/queries/students";
+import { listBatchOptions } from "@/lib/queries/batches";
 import { StudentForm } from "@/components/students/student-form";
 
 export default async function EditStudentPage({
@@ -3299,13 +3324,14 @@ export default async function EditStudentPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const student = await getStudent(id);
+  const [student, batches] = await Promise.all([getStudent(id), listBatchOptions()]);
   if (!student) notFound();
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold text-foreground">Edit Student</h1>
       <StudentForm
+        batches={batches}
         existing={{
           id: student.id,
           photoUrl: student.photoUrl,
@@ -3341,13 +3367,13 @@ export default async function EditStudentPage({
 npm run dev
 ```
 
-Log in, go to Students → Add Student, fill in every field, upload a photo, submit. Confirm redirect to the student list and the new student appears with the correct auto-generated `ST-00001` code. Edit the student, change the name, confirm it saves. Stop the server.
+Log in, go to Students → Add Student, fill in every field (no photo — deferred), submit. Confirm redirect to the student list and the new student appears with the correct auto-generated `ST-00001` code. Edit the student, change the name, confirm it saves and the Batch select shows the correct name (not a raw ID). Stop the server.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add -A
-git commit -m "Add student create/edit form with photo upload
+git commit -m "Add student create/edit form (photo upload deferred to Task 16)
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 ```
