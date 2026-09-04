@@ -12,12 +12,12 @@
 
 ---
 
-## Task 1: Scaffold the Next.js project
+## Task 1: Scaffold the Next.js project ✅ DONE (commit 1edc180)
 
 **Files:**
 - Create: entire project scaffold (package.json, tsconfig.json, next.config.ts, src/app/layout.tsx, src/app/page.tsx, src/app/globals.css, .gitignore, eslint config)
 
-- [ ] **Step 1: Run create-next-app in the current directory**
+- [x] **Step 1: Run create-next-app in the current directory**
 
 ```bash
 npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias "@/*" --use-npm
