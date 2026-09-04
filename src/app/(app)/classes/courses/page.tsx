@@ -1,4 +1,4 @@
-import { listCourses } from "@/actions/courses";
+import { listCourses } from "@/lib/queries/courses";
 import { CoursesList } from "@/components/classes/courses-list";
 
 export default async function CoursesPage() {

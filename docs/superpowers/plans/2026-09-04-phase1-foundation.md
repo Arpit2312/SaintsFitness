@@ -1366,6 +1366,8 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ## Task 11: Classes & Batches — tab layout + Courses CRUD ✅ DONE (commit 938247e, fixed a real bug in the "hardened" dismissal-guard in 2f12f7f — the prior fix skipped the parent onOpenChange but base-ui's Dialog still closed via Escape/backdrop anyway; needed eventDetails.cancel() — then extracted into src/hooks/use-guarded-dialog.ts with a regression test in 4dc9fd1. Also fixed a stale react-hook-form defaultValues bug on the reused dialog instance (see course-form-dialog.tsx's useEffect+reset()).)
 
+**Follow-up (separate commit, "Separate read queries from Server Action mutations"):** `listCourses` was moved out of `src/actions/courses.ts` into a new `src/lib/queries/courses.ts` guarded by `import "server-only"`, since it's a pure read and had no business being a client-callable Server Action just because it shared a file with `createCourse`/`updateCourse`/`deleteCourse`. `src/actions/courses.ts` now contains only the mutations under `"use server"`. This is the pattern going forward for every entity: reads live in `src/lib/queries/<entity>.ts` (`import "server-only"`, plain async functions), mutations live in `src/actions/<entity>.ts` (`"use server"`). See Task 13/15/17/18 annotations below.
+
 **Files:**
 - Create: `src/lib/validations/course.ts`
 - Create: `src/actions/courses.ts`
@@ -1706,6 +1708,8 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 The code block below is the ORIGINAL plan snippet and does NOT include either fix — do not copy it verbatim; use it for the field list/validation/server-action shape only, and apply both hardening patterns as `course-form-dialog.tsx` actually does.
 
+**Follow-up (same commit as Task 11's, "Separate read queries from Server Action mutations"):** `listInstructors` was likewise moved to `src/lib/queries/instructors.ts` (`import "server-only"`), leaving `src/actions/instructors.ts` with only `createInstructor`/`updateInstructor`/`deleteInstructor` under `"use server"`. Same pattern as Task 11 — see that task's follow-up note.
+
 **Files:**
 - Create: `src/lib/validations/instructor.ts`
 - Create: `src/actions/instructors.ts`
@@ -1980,13 +1984,18 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 **IMPORTANT — same two hardening patterns as Task 11/12 apply to `BatchFormDialog`:** dismissal-while-pending hardening — use the shared `useGuardedDialogOpenChange` hook from `src/hooks/use-guarded-dialog.ts` exactly as `CourseFormDialog`/`InstructorFormDialog` do (`const handleOpenChange = useGuardedDialogOpenChange(submitting, onOpenChange)`, then `<Dialog open={open} onOpenChange={handleOpenChange}>`), still with `showCloseButton={!submitting}` and disabled fields — and re-seed via `useEffect`+`reset()` on `open`/`batch` change since this is also a persistent reused instance. Copy the pattern from the actually-committed `src/components/classes/course-form-dialog.tsx`, not the inline snippets in this plan. (If a Student form dialog is ever added, it should use this same hook rather than re-inlining the guard.)
 
 **IMPORTANT — data fetching pattern has changed since this plan was written; do NOT copy the `"use client"` + `useEffect`-fetch inline snippets below.** The Courses and Instructors list pages originally shipped with a client-side `useEffect(() => { refresh() }, [refresh, formOpen])` pattern that calling `setCourses`/`setInstructors` inside — this trips a real ESLint error, `react-hooks/set-state-in-effect` ("Calling setState synchronously within an effect can trigger cascading renders"), which `next build` does NOT catch (only a direct `npx eslint` run surfaces it). Both pages were refactored (see commit that converts them to Server Component data fetching — check `git log --oneline -- src/app/\(app\)/classes/courses/page.tsx`) to the idiomatic Next.js App Router split:
-- `src/app/(app)/classes/courses/page.tsx` is a plain `async` Server Component with no `"use client"` directive — it calls `await listCourses()` directly (Server Actions can be called straight from a Server Component; this works fine even though `listCourses` stays `"use server"` for reuse elsewhere) and passes the result as a `courses` prop.
+- `src/app/(app)/classes/courses/page.tsx` is a plain `async` Server Component with no `"use client"` directive — it calls `await listCourses()` directly and passes the result as a `courses` prop. (This description predates the read/write file split below: `listCourses` no longer lives in a `"use server"` actions file at all — see the follow-up note on Task 11. It's now a plain `import "server-only"` function in `src/lib/queries/courses.ts`, callable from any Server Component the same way, but no longer a Server Action.)
 - `src/components/classes/courses-list.tsx` is the `"use client"` component — it receives `courses` as a prop, holds only UI state (`formOpen`, `editing`, `deleteTarget`), and has **no `useState`/`useEffect` for the list itself**. After a successful mutation it calls `router.refresh()` (from `next/navigation`) instead of re-fetching client-side. Because `CourseFormDialog`'s internal `onSubmit` doesn't expose a success hook by default, it was given an optional `onSuccess?: () => void` prop, invoked right after the dialog's own `onOpenChange(false)` on the success path; the list component passes `onSuccess={() => router.refresh()}`. `ConfirmDialog`'s `onConfirm` prop is wired directly by the list component, so its delete handler just calls `router.refresh()` after `await deleteCourse(...)`.
 
 Apply the identical split for Batches: `src/app/(app)/classes/batches/page.tsx` becomes an async Server Component (`const batches = await listBatches(); return <BatchesList batches={batches} />;`), and create `src/components/classes/batches-list.tsx` as the `"use client"` piece, following `src/components/classes/courses-list.tsx` and `src/app/(app)/classes/courses/page.tsx` as the reference implementation — not the code blocks below, which predate the fix. Give `BatchFormDialog` the same optional `onSuccess?: () => void` prop as `CourseFormDialog`/`InstructorFormDialog`, called after its internal `onOpenChange(false)` on success.
 
+**IMPORTANT — read/write file split (see Task 11/12 follow-up notes and the "Separate read queries from Server Action mutations" commit): `listBatches` and `listBatchOptions` do NOT go in `src/actions/batches.ts`.** They are pure reads and must live in a new `src/lib/queries/batches.ts` with `import "server-only";` at the top (no `"use server"`) — same as `src/lib/queries/courses.ts`/`src/lib/queries/instructors.ts`. `src/actions/batches.ts` keeps only `createBatch`/`updateBatch`/`deleteBatch` under `"use server"`. The Step 2 code block below still shows them combined in one `"use server"` file — split it per this note; do not copy it verbatim.
+
+**Consequence for `BatchFormDialog` (Step 3 below): it can no longer fetch its own course/instructor dropdown options client-side.** The Step 3 snippet's `useEffect(() => { listCourses().then(setCourses); listInstructors().then(setInstructors); }, [open])` calls two query functions directly from a `"use client"` component — once those functions are guarded by `server-only`, that import fails at build time (which is the whole point of the guard: it turns this exact mistake into a build error instead of a silent client-side network call). Fetch `courses` and `instructors` in the Server Component (`src/app/(app)/classes/batches/page.tsx`, alongside `listBatches()`) and pass them down as props through `BatchesList` into `BatchFormDialog`, the same way `courses`/`instructors` already flow into `CoursesList`/`InstructorsList`. Do not add a server action wrapper around `listCourses`/`listInstructors` just to make them client-callable — that defeats the purpose of the split.
+
 **Files:**
 - Create: `src/lib/validations/batch.ts`
+- Create: `src/lib/queries/batches.ts`
 - Create: `src/actions/batches.ts`
 - Create: `src/app/(app)/classes/batches/page.tsx`
 - Create: `src/components/classes/batch-form-dialog.tsx`
@@ -2010,14 +2019,14 @@ export const batchSchema = z.object({
 export type BatchInput = z.infer<typeof batchSchema>;
 ```
 
-- [ ] **Step 2: Write `src/actions/batches.ts`**
+- [ ] **Step 2: Write `src/lib/queries/batches.ts` (reads) and `src/actions/batches.ts` (mutations)**
+
+`src/lib/queries/batches.ts`:
 
 ```ts
-"use server";
+import "server-only";
 
 import { prisma } from "@/lib/db";
-import { batchSchema, type BatchInput } from "@/lib/validations/batch";
-import { revalidatePath } from "next/cache";
 
 export async function listBatches() {
   return prisma.batch.findMany({
@@ -2038,6 +2047,16 @@ export async function listBatchOptions() {
     orderBy: { name: "asc" },
   });
 }
+```
+
+`src/actions/batches.ts`:
+
+```ts
+"use server";
+
+import { prisma } from "@/lib/db";
+import { batchSchema, type BatchInput } from "@/lib/validations/batch";
+import { revalidatePath } from "next/cache";
 
 export async function createBatch(input: BatchInput) {
   const data = batchSchema.parse(input);
@@ -2062,13 +2081,11 @@ export async function deleteBatch(id: string) {
 ```tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { batchSchema, type BatchInput, DAYS } from "@/lib/validations/batch";
 import { createBatch, updateBatch } from "@/actions/batches";
-import { listCourses } from "@/actions/courses";
-import { listInstructors } from "@/actions/instructors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -2097,20 +2114,19 @@ export function BatchFormDialog({
   open,
   onOpenChange,
   batch,
+  courses,
+  instructors,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   batch?: BatchWithRelations;
+  // Fetched by the nearest Server Component ancestor (via listCourses/listInstructors
+  // from src/lib/queries/) and passed down as props — this dialog cannot fetch them
+  // itself since those are server-only functions, not Server Actions.
+  courses: { id: string; name: string }[];
+  instructors: { id: string; name: string }[];
 }) {
   const [submitting, setSubmitting] = useState(false);
-  const [courses, setCourses] = useState<{ id: string; name: string }[]>([]);
-  const [instructors, setInstructors] = useState<{ id: string; name: string }[]>([]);
-
-  useEffect(() => {
-    if (!open) return;
-    listCourses().then(setCourses);
-    listInstructors().then(setInstructors);
-  }, [open]);
 
   const {
     register,
@@ -2499,18 +2515,20 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ## Task 15: Student server actions
 
+**IMPORTANT — read/write file split (see Task 11/12/13 follow-up notes and the "Separate read queries from Server Action mutations" commit): `listStudents` and `getStudent` do NOT go in `src/actions/students.ts`.** They are pure reads and must live in a new `src/lib/queries/students.ts` with `import "server-only";` at the top (no `"use server"`) — same pattern as `src/lib/queries/courses.ts`/`instructors.ts`/`batches.ts`. `src/actions/students.ts` keeps only `createStudent`/`updateStudent`/`deleteStudent` under `"use server"`. The `StudentFilters` type and the `generateStudentCode` import belong wherever they're actually used — `StudentFilters` moves to the queries file with `listStudents`; `generateStudentCode` stays with `createStudent` in the actions file. The code block below still shows everything combined in one `"use server"` file — split it per this note; do not copy it verbatim.
+
 **Files:**
+- Create: `src/lib/queries/students.ts`
 - Create: `src/actions/students.ts`
 
-- [ ] **Step 1: Write `src/actions/students.ts`**
+- [ ] **Step 1: Write `src/lib/queries/students.ts` (reads) and `src/actions/students.ts` (mutations)**
+
+`src/lib/queries/students.ts`:
 
 ```ts
-"use server";
+import "server-only";
 
 import { prisma } from "@/lib/db";
-import { generateStudentCode } from "@/lib/ids";
-import { studentSchema, type StudentInput } from "@/lib/validations/student";
-import { revalidatePath } from "next/cache";
 import type { StudentStatus } from "@prisma/client";
 
 export type StudentFilters = {
@@ -2555,6 +2573,17 @@ export async function getStudent(id: string) {
     },
   });
 }
+```
+
+`src/actions/students.ts`:
+
+```ts
+"use server";
+
+import { prisma } from "@/lib/db";
+import { generateStudentCode } from "@/lib/ids";
+import { studentSchema, type StudentInput } from "@/lib/validations/student";
+import { revalidatePath } from "next/cache";
 
 export async function createStudent(input: StudentInput, photoUrl?: string) {
   const data = studentSchema.parse(input);
@@ -2821,6 +2850,8 @@ This page is different from Courses/Instructors/Batches in one respect: it has *
 - **Why this is acceptable, not a shortcut:** Phase 1 targets a single dance academy with dozens to low hundreds of students — small enough that shipping the whole list to the client and filtering there is fast, simple, and avoids a class of bugs (debounce races, stale closures in a `useEffect` deps array, loading flicker) that the URL-search-param approach would introduce for no real benefit at this scale. If the student base ever grows enough that shipping the full list becomes a real cost, revisit with `?search=&status=&batchId=` URL params read via `useSearchParams()`/`searchParams` prop on the Server Component page and a debounced `router.push`/`replace` — but do not build that machinery preemptively.
 - This is a client-state-only concern; it does not change the mutation-refresh pattern. If Task 17 or a later task adds create/edit/delete actions to this page (e.g. bulk actions), those still follow the Task 13 pattern: call the server action, then `router.refresh()` to get fresh data from the Server Component, same as Courses/Instructors/Batches.
 
+**IMPORTANT — read/write file split: `listStudents` now lives in `src/lib/queries/students.ts` (see Task 15's follow-up note), not `src/actions/students.ts`.** Import it from `@/lib/queries/students` in the Server Component. Same for the batch-options dropdown: the Step 1 snippet below imports `listBatchOptions` from `@/actions/batches` and calls it directly in a `"use client"` `useEffect` (`listBatchOptions().then(setBatches)`) — that's the exact footgun this whole file split exists to prevent, and once `listBatchOptions` moves to `src/lib/queries/batches.ts` (per Task 13's follow-up note) that client-side call fails at build time. Fetch `listBatchOptions()` in the Server Component alongside `listStudents()` and pass the result down as a `batches` prop to the `"use client"` list component, the same way `students` is passed down.
+
 **Files:**
 - Create: `src/app/(app)/students/page.tsx`
 
@@ -2980,6 +3011,8 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 ---
 
 ## Task 18: Student new/edit form page
+
+**IMPORTANT — read/write file split: `student-form.tsx`'s batch dropdown cannot fetch its own options client-side.** The Step 1 snippet below imports `listBatchOptions` from `@/actions/batches` and calls it directly in a `"use client"` `useEffect` (`listBatchOptions().then(setBatches)`). Once `listBatchOptions` moves to `src/lib/queries/batches.ts` (Task 13's follow-up note), it is a server-only function, not a Server Action — it cannot be imported or called from client code at all, and the build will fail if it is. Fetch `listBatchOptions()` in the parent Server Component (`src/app/(app)/students/new/page.tsx` and `src/app/(app)/students/[id]/edit/page.tsx`) and pass the result down to `StudentForm` as a `batches` prop, the same way `getStudent(id)`'s result is passed down for the edit case. Also note `getStudent` itself now lives in `src/lib/queries/students.ts` (see Task 15's follow-up note), not `src/actions/students.ts`.
 
 **Files:**
 - Create: `src/components/students/student-form.tsx`
@@ -3197,7 +3230,7 @@ export default function NewStudentPage() {
 
 ```tsx
 import { notFound } from "next/navigation";
-import { getStudent } from "@/actions/students";
+import { getStudent } from "@/lib/queries/students";
 import { StudentForm } from "@/components/students/student-form";
 
 export default async function EditStudentPage({
@@ -3370,7 +3403,7 @@ export function DeleteStudentButton({ id }: { id: string }) {
 
 ```tsx
 import { notFound } from "next/navigation";
-import { getStudent } from "@/actions/students";
+import { getStudent } from "@/lib/queries/students";
 import { StudentHeader } from "@/components/students/student-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
@@ -3528,14 +3561,18 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ## Task 20: Dashboard
 
+**IMPORTANT — read/write file split: `getDashboardStats` is a pure read and belongs in `src/lib/queries/dashboard.ts`, not `src/actions/dashboard.ts`.** The Step 1 snippet below already correctly omits `"use server"` (there are no mutations in this file), but it was written before the `src/lib/queries/` convention existed and puts a read-only file under `src/actions/`, which is exactly the naming confusion this refactor is meant to eliminate (the directory name should tell you what the file is without reading its contents). Name the file `src/lib/queries/dashboard.ts` and add `import "server-only";` at the top, same as `src/lib/queries/courses.ts`.
+
 **Files:**
-- Create: `src/actions/dashboard.ts`
+- Create: `src/lib/queries/dashboard.ts`
 - Create: `src/components/dashboard/stat-card.tsx`
 - Create: `src/app/(app)/dashboard/page.tsx`
 
-- [ ] **Step 1: Write `src/actions/dashboard.ts`**
+- [ ] **Step 1: Write `src/lib/queries/dashboard.ts`**
 
 ```ts
+import "server-only";
+
 import { prisma } from "@/lib/db";
 import { startOfDay, endOfDay } from "date-fns";
 
@@ -3606,7 +3643,7 @@ export function StatCard({
 ```tsx
 import { Users, UserCheck, Wallet, AlertCircle, CalendarClock, ClipboardCheck } from "lucide-react";
 import { StatCard } from "@/components/dashboard/stat-card";
-import { getDashboardStats } from "@/actions/dashboard";
+import { getDashboardStats } from "@/lib/queries/dashboard";
 
 export default async function DashboardPage() {
   const stats = await getDashboardStats();

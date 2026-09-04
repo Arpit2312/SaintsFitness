@@ -9,7 +9,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { InstructorFormDialog } from "@/components/classes/instructor-form-dialog";
-import { listInstructors, deleteInstructor } from "@/actions/instructors";
+import { deleteInstructor } from "@/actions/instructors";
+import type { listInstructors } from "@/lib/queries/instructors";
 
 type InstructorWithBatches = Awaited<ReturnType<typeof listInstructors>>[number];
 

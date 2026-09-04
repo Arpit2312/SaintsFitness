@@ -9,7 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { CourseFormDialog } from "@/components/classes/course-form-dialog";
-import { listCourses, deleteCourse } from "@/actions/courses";
+import { deleteCourse } from "@/actions/courses";
+import type { listCourses } from "@/lib/queries/courses";
 
 type CourseWithBatches = Awaited<ReturnType<typeof listCourses>>[number];
 
