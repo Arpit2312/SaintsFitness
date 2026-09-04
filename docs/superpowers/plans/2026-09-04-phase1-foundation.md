@@ -1979,7 +1979,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 13: Batches CRUD
+## Task 13: Batches CRUD ✅ DONE (commit f97491d, cast-safety comments in 54a8918 — found and fixed two real bugs in the plan's own code: Select onValueChange type cast, and SelectValue silently showing raw IDs instead of names, see the SelectValue children-function pattern in batch-form-dialog.tsx; same bug flagged for Task 18's Batch select)
 
 The code blocks below (Steps 1-4) are already updated to match the real, reviewed pattern established in Tasks 11/12 — `useGuardedDialogOpenChange` for dismissal-hardening, `useEffect`+`reset()` for stale-defaultValues, `src/lib/queries/` (guarded by `import "server-only"`) for reads vs. `src/actions/` (`"use server"`) for mutations, and a Server Component page + `"use client"` list component + `router.refresh()` for data flow — no further translation needed, just implement them as written.
 
