@@ -100,6 +100,9 @@ export function CourseFormDialog({
             <Label>Category</Label>
             <Select
               value={watch("category")}
+              // base-ui types onValueChange's value as `string | null`, but no real
+              // call site emits null in single-select mode — see batch-form-dialog.tsx
+              // for the fuller rationale (traced against @base-ui/react's SelectRoot.js).
               onValueChange={(v) => setValue("category", v as CourseInput["category"])}
               disabled={submitting}
             >

@@ -130,6 +130,11 @@ export function BatchFormDialog({
             <Label>Course</Label>
             <Select
               value={watch("courseId")}
+              // base-ui types onValueChange's value as `string | null`, but the null
+              // branch only exists for the value/defaultValue props' uncontrolled case —
+              // no real onValueChange call site in single-select mode emits null. If that
+              // ever changes, zod's min(1) on submit turns it into a normal field error,
+              // not a crash.
               onValueChange={(v) => setValue("courseId", v as string)}
               disabled={submitting}
             >
@@ -156,6 +161,7 @@ export function BatchFormDialog({
             <Label>Instructor</Label>
             <Select
               value={watch("instructorId")}
+              // Same safe-cast rationale as the Course select above.
               onValueChange={(v) => setValue("instructorId", v as string)}
               disabled={submitting}
             >
