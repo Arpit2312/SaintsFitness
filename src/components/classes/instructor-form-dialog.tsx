@@ -17,10 +17,12 @@ export function InstructorFormDialog({
   open,
   onOpenChange,
   instructor,
+  onSuccess,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   instructor?: { id: string; name: string; mobile: string; bio: string | null };
+  onSuccess?: () => void;
 }) {
   const [submitting, setSubmitting] = useState(false);
   const {
@@ -63,6 +65,7 @@ export function InstructorFormDialog({
       }
       reset();
       onOpenChange(false);
+      onSuccess?.();
     } catch {
       toast.error("Something went wrong. Please try again.");
     } finally {

@@ -24,10 +24,12 @@ export function CourseFormDialog({
   open,
   onOpenChange,
   course,
+  onSuccess,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   course?: { id: string; name: string; category: string; description: string | null };
+  onSuccess?: () => void;
 }) {
   const [submitting, setSubmitting] = useState(false);
   const {
@@ -72,6 +74,7 @@ export function CourseFormDialog({
       }
       reset();
       onOpenChange(false);
+      onSuccess?.();
     } catch {
       toast.error("Something went wrong. Please try again.");
     } finally {
