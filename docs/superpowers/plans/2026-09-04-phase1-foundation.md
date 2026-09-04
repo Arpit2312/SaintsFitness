@@ -1981,24 +1981,15 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ## Task 13: Batches CRUD
 
-**IMPORTANT — same two hardening patterns as Task 11/12 apply to `BatchFormDialog`:** dismissal-while-pending hardening — use the shared `useGuardedDialogOpenChange` hook from `src/hooks/use-guarded-dialog.ts` exactly as `CourseFormDialog`/`InstructorFormDialog` do (`const handleOpenChange = useGuardedDialogOpenChange(submitting, onOpenChange)`, then `<Dialog open={open} onOpenChange={handleOpenChange}>`), still with `showCloseButton={!submitting}` and disabled fields — and re-seed via `useEffect`+`reset()` on `open`/`batch` change since this is also a persistent reused instance. Copy the pattern from the actually-committed `src/components/classes/course-form-dialog.tsx`, not the inline snippets in this plan. (If a Student form dialog is ever added, it should use this same hook rather than re-inlining the guard.)
-
-**IMPORTANT — data fetching pattern has changed since this plan was written; do NOT copy the `"use client"` + `useEffect`-fetch inline snippets below.** The Courses and Instructors list pages originally shipped with a client-side `useEffect(() => { refresh() }, [refresh, formOpen])` pattern that calling `setCourses`/`setInstructors` inside — this trips a real ESLint error, `react-hooks/set-state-in-effect` ("Calling setState synchronously within an effect can trigger cascading renders"), which `next build` does NOT catch (only a direct `npx eslint` run surfaces it). Both pages were refactored (see commit that converts them to Server Component data fetching — check `git log --oneline -- src/app/\(app\)/classes/courses/page.tsx`) to the idiomatic Next.js App Router split:
-- `src/app/(app)/classes/courses/page.tsx` is a plain `async` Server Component with no `"use client"` directive — it calls `await listCourses()` directly and passes the result as a `courses` prop. (This description predates the read/write file split below: `listCourses` no longer lives in a `"use server"` actions file at all — see the follow-up note on Task 11. It's now a plain `import "server-only"` function in `src/lib/queries/courses.ts`, callable from any Server Component the same way, but no longer a Server Action.)
-- `src/components/classes/courses-list.tsx` is the `"use client"` component — it receives `courses` as a prop, holds only UI state (`formOpen`, `editing`, `deleteTarget`), and has **no `useState`/`useEffect` for the list itself**. After a successful mutation it calls `router.refresh()` (from `next/navigation`) instead of re-fetching client-side. Because `CourseFormDialog`'s internal `onSubmit` doesn't expose a success hook by default, it was given an optional `onSuccess?: () => void` prop, invoked right after the dialog's own `onOpenChange(false)` on the success path; the list component passes `onSuccess={() => router.refresh()}`. `ConfirmDialog`'s `onConfirm` prop is wired directly by the list component, so its delete handler just calls `router.refresh()` after `await deleteCourse(...)`.
-
-Apply the identical split for Batches: `src/app/(app)/classes/batches/page.tsx` becomes an async Server Component (`const batches = await listBatches(); return <BatchesList batches={batches} />;`), and create `src/components/classes/batches-list.tsx` as the `"use client"` piece, following `src/components/classes/courses-list.tsx` and `src/app/(app)/classes/courses/page.tsx` as the reference implementation — not the code blocks below, which predate the fix. Give `BatchFormDialog` the same optional `onSuccess?: () => void` prop as `CourseFormDialog`/`InstructorFormDialog`, called after its internal `onOpenChange(false)` on success.
-
-**IMPORTANT — read/write file split (see Task 11/12 follow-up notes and the "Separate read queries from Server Action mutations" commit): `listBatches` and `listBatchOptions` do NOT go in `src/actions/batches.ts`.** They are pure reads and must live in a new `src/lib/queries/batches.ts` with `import "server-only";` at the top (no `"use server"`) — same as `src/lib/queries/courses.ts`/`src/lib/queries/instructors.ts`. `src/actions/batches.ts` keeps only `createBatch`/`updateBatch`/`deleteBatch` under `"use server"`. The Step 2 code block below still shows them combined in one `"use server"` file — split it per this note; do not copy it verbatim.
-
-**Consequence for `BatchFormDialog` (Step 3 below): it can no longer fetch its own course/instructor dropdown options client-side.** The Step 3 snippet's `useEffect(() => { listCourses().then(setCourses); listInstructors().then(setInstructors); }, [open])` calls two query functions directly from a `"use client"` component — once those functions are guarded by `server-only`, that import fails at build time (which is the whole point of the guard: it turns this exact mistake into a build error instead of a silent client-side network call). Fetch `courses` and `instructors` in the Server Component (`src/app/(app)/classes/batches/page.tsx`, alongside `listBatches()`) and pass them down as props through `BatchesList` into `BatchFormDialog`, the same way `courses`/`instructors` already flow into `CoursesList`/`InstructorsList`. Do not add a server action wrapper around `listCourses`/`listInstructors` just to make them client-callable — that defeats the purpose of the split.
+The code blocks below (Steps 1-4) are already updated to match the real, reviewed pattern established in Tasks 11/12 — `useGuardedDialogOpenChange` for dismissal-hardening, `useEffect`+`reset()` for stale-defaultValues, `src/lib/queries/` (guarded by `import "server-only"`) for reads vs. `src/actions/` (`"use server"`) for mutations, and a Server Component page + `"use client"` list component + `router.refresh()` for data flow — no further translation needed, just implement them as written.
 
 **Files:**
 - Create: `src/lib/validations/batch.ts`
 - Create: `src/lib/queries/batches.ts`
 - Create: `src/actions/batches.ts`
-- Create: `src/app/(app)/classes/batches/page.tsx`
 - Create: `src/components/classes/batch-form-dialog.tsx`
+- Create: `src/components/classes/batches-list.tsx`
+- Create: `src/app/(app)/classes/batches/page.tsx`
 
 - [ ] **Step 1: Write `src/lib/validations/batch.ts`**
 
@@ -2078,10 +2069,12 @@ export async function deleteBatch(id: string) {
 
 - [ ] **Step 3: Write `src/components/classes/batch-form-dialog.tsx`**
 
+This matches the ACTUAL, reviewed shape of `src/components/classes/course-form-dialog.tsx` — uses `useGuardedDialogOpenChange`, the `useEffect`+`reset()` re-seed, `onSuccess` callback, and `courses`/`instructors` passed as props (not fetched internally):
+
 ```tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { batchSchema, type BatchInput, DAYS } from "@/lib/validations/batch";
@@ -2098,6 +2091,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useGuardedDialogOpenChange } from "@/hooks/use-guarded-dialog";
 import { toast } from "sonner";
 
 type BatchWithRelations = {
@@ -2110,12 +2104,26 @@ type BatchWithRelations = {
   capacity: number;
 };
 
+function defaultsFor(batch?: BatchWithRelations): BatchInput {
+  return batch
+    ? {
+        name: batch.name,
+        courseId: batch.courseId,
+        instructorId: batch.instructorId ?? "",
+        timing: batch.timing,
+        days: batch.days as BatchInput["days"],
+        capacity: batch.capacity,
+      }
+    : { name: "", courseId: "", instructorId: "", timing: "", days: [], capacity: 20 };
+}
+
 export function BatchFormDialog({
   open,
   onOpenChange,
   batch,
   courses,
   instructors,
+  onSuccess,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -2125,6 +2133,7 @@ export function BatchFormDialog({
   // itself since those are server-only functions, not Server Actions.
   courses: { id: string; name: string }[];
   instructors: { id: string; name: string }[];
+  onSuccess?: () => void;
 }) {
   const [submitting, setSubmitting] = useState(false);
 
@@ -2137,17 +2146,16 @@ export function BatchFormDialog({
     formState: { errors },
   } = useForm<BatchInput>({
     resolver: zodResolver(batchSchema),
-    defaultValues: batch
-      ? {
-          name: batch.name,
-          courseId: batch.courseId,
-          instructorId: batch.instructorId ?? "",
-          timing: batch.timing,
-          days: batch.days as BatchInput["days"],
-          capacity: batch.capacity,
-        }
-      : { name: "", courseId: "", instructorId: "", timing: "", days: [], capacity: 20 },
+    defaultValues: defaultsFor(batch),
   });
+
+  // BatchFormDialog is a single persistent instance reused for both "New" and
+  // "Edit" (the page toggles `batch` and flips `open` rather than remounting),
+  // so react-hook-form's `defaultValues` — only applied at initial mount — go
+  // stale. Re-seed the form whenever the dialog opens for a given target.
+  useEffect(() => {
+    if (open) reset(defaultsFor(batch));
+  }, [open, batch, reset]);
 
   const selectedDays = watch("days") ?? [];
 
@@ -2163,6 +2171,7 @@ export function BatchFormDialog({
       }
       reset();
       onOpenChange(false);
+      onSuccess?.();
     } catch {
       toast.error("Something went wrong. Please try again.");
     } finally {
@@ -2177,21 +2186,27 @@ export function BatchFormDialog({
     setValue("days", next);
   }
 
+  const handleOpenChange = useGuardedDialogOpenChange(submitting, onOpenChange);
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent showCloseButton={!submitting}>
         <DialogHeader>
           <DialogTitle>{batch ? "Edit Batch" : "New Batch"}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="name">Batch Name</Label>
-            <Input id="name" {...register("name")} placeholder="e.g. Morning Zumba" />
+            <Input id="name" {...register("name")} placeholder="e.g. Morning Zumba" disabled={submitting} />
             {errors.name && <p className="text-sm text-danger">{errors.name.message}</p>}
           </div>
           <div className="space-y-2">
             <Label>Course</Label>
-            <Select value={watch("courseId")} onValueChange={(v) => setValue("courseId", v)}>
+            <Select
+              value={watch("courseId")}
+              onValueChange={(v) => setValue("courseId", v)}
+              disabled={submitting}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Select a course" />
               </SelectTrigger>
@@ -2207,7 +2222,11 @@ export function BatchFormDialog({
           </div>
           <div className="space-y-2">
             <Label>Instructor</Label>
-            <Select value={watch("instructorId")} onValueChange={(v) => setValue("instructorId", v)}>
+            <Select
+              value={watch("instructorId")}
+              onValueChange={(v) => setValue("instructorId", v)}
+              disabled={submitting}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Select an instructor" />
               </SelectTrigger>
@@ -2223,7 +2242,7 @@ export function BatchFormDialog({
           </div>
           <div className="space-y-2">
             <Label htmlFor="timing">Timing</Label>
-            <Input id="timing" {...register("timing")} placeholder="e.g. 7:00 AM - 8:00 AM" />
+            <Input id="timing" {...register("timing")} placeholder="e.g. 7:00 AM - 8:00 AM" disabled={submitting} />
             {errors.timing && <p className="text-sm text-danger">{errors.timing.message}</p>}
           </div>
           <div className="space-y-2">
@@ -2234,6 +2253,7 @@ export function BatchFormDialog({
                   <Checkbox
                     checked={selectedDays.includes(day)}
                     onCheckedChange={() => toggleDay(day)}
+                    disabled={submitting}
                   />
                   {day}
                 </label>
@@ -2243,7 +2263,7 @@ export function BatchFormDialog({
           </div>
           <div className="space-y-2">
             <Label htmlFor="capacity">Capacity</Label>
-            <Input id="capacity" type="number" {...register("capacity")} />
+            <Input id="capacity" type="number" {...register("capacity")} disabled={submitting} />
             {errors.capacity && <p className="text-sm text-danger">{errors.capacity.message}</p>}
           </div>
           <Button type="submit" className="w-full" disabled={submitting}>
@@ -2256,12 +2276,17 @@ export function BatchFormDialog({
 }
 ```
 
-- [ ] **Step 4: Write `src/app/(app)/classes/batches/page.tsx`**
+- [ ] **Step 4: Write `src/components/classes/batches-list.tsx` (client) and `src/app/(app)/classes/batches/page.tsx` (Server Component)**
+
+This matches the ACTUAL, reviewed shape of `courses-list.tsx`/`courses/page.tsx` — the page fetches server-side and passes props down, the client component holds only UI state and calls `router.refresh()` after mutations, no client-side list state at all:
+
+`src/components/classes/batches-list.tsx`:
 
 ```tsx
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Plus, CalendarDays, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -2269,23 +2294,24 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { BatchFormDialog } from "@/components/classes/batch-form-dialog";
-import { listBatches, deleteBatch } from "@/actions/batches";
+import { deleteBatch } from "@/actions/batches";
+import type { listBatches } from "@/lib/queries/batches";
 
 type BatchWithRelations = Awaited<ReturnType<typeof listBatches>>[number];
 
-export default function BatchesPage() {
-  const [batches, setBatches] = useState<BatchWithRelations[]>([]);
+export function BatchesList({
+  batches,
+  courseOptions,
+  instructorOptions,
+}: {
+  batches: BatchWithRelations[];
+  courseOptions: { id: string; name: string }[];
+  instructorOptions: { id: string; name: string }[];
+}) {
+  const router = useRouter();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<BatchWithRelations | undefined>();
   const [deleteTarget, setDeleteTarget] = useState<BatchWithRelations | undefined>();
-
-  const refresh = useCallback(async () => {
-    setBatches(await listBatches());
-  }, []);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh, formOpen]);
 
   return (
     <div className="space-y-4">
@@ -2354,7 +2380,14 @@ export default function BatchesPage() {
         </div>
       )}
 
-      <BatchFormDialog open={formOpen} onOpenChange={setFormOpen} batch={editing} />
+      <BatchFormDialog
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        batch={editing}
+        courses={courseOptions}
+        instructors={instructorOptions}
+        onSuccess={() => router.refresh()}
+      />
       {deleteTarget && (
         <ConfirmDialog
           open={!!deleteTarget}
@@ -2363,11 +2396,36 @@ export default function BatchesPage() {
           description="This batch will be removed from the list."
           onConfirm={async () => {
             await deleteBatch(deleteTarget.id);
-            await refresh();
+            router.refresh();
           }}
         />
       )}
     </div>
+  );
+}
+```
+
+`src/app/(app)/classes/batches/page.tsx`:
+
+```tsx
+import { listBatches } from "@/lib/queries/batches";
+import { listCourses } from "@/lib/queries/courses";
+import { listInstructors } from "@/lib/queries/instructors";
+import { BatchesList } from "@/components/classes/batches-list";
+
+export default async function BatchesPage() {
+  const [batches, courses, instructors] = await Promise.all([
+    listBatches(),
+    listCourses(),
+    listInstructors(),
+  ]);
+
+  return (
+    <BatchesList
+      batches={batches}
+      courseOptions={courses.map((c) => ({ id: c.id, name: c.name }))}
+      instructorOptions={instructors.map((i) => ({ id: i.id, name: i.name }))}
+    />
   );
 }
 ```
@@ -2378,7 +2436,7 @@ export default function BatchesPage() {
 npm run dev
 ```
 
-Navigate to Classes & Batches → Batches, confirm the 3 seeded batches render with correct course/instructor/days, and add/edit/delete works. Stop the server.
+Navigate to Classes & Batches → Batches, confirm the 3 seeded batches render with correct course/instructor/days, and add/edit/delete works (including that the Course/Instructor Select dropdowns are populated — they come from the Server Component's props now, not a client fetch). Stop the server.
 
 ```bash
 git add -A
