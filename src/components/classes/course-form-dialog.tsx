@@ -81,13 +81,19 @@ export function CourseFormDialog({
   return (
     <Dialog
       open={open}
-      onOpenChange={(next) => {
+      onOpenChange={(next, eventDetails) => {
         // Block every dismissal path (X button, Escape, backdrop click) while
         // a save is in flight — same hardening as ConfirmDialog. Only the
         // form's own submit-success path (via onOpenChange(false) above) or
         // the Cancel/close affordances (disabled below while submitting) may
-        // change open state mid-request.
-        if (submitting) return;
+        // change open state mid-request. Merely skipping onOpenChange isn't
+        // enough: base-ui's internal DialogStore applies `next` to its own
+        // state regardless of what this callback does, unless
+        // eventDetails.cancel() is called.
+        if (submitting) {
+          eventDetails.cancel();
+          return;
+        }
         onOpenChange(next);
       }}
     >
