@@ -256,6 +256,19 @@ model Account {
   id                    String    @id @default(cuid())
   accountId             String
   providerId            String
+  // Added post-Task-4, during Task 7 sign-in verification: better-auth@1.7.2's
+  // own Account schema (node_modules/@better-auth/core/dist/db/schema/account.mjs)
+  // declares `issuer` as a required string, and its internal adapter
+  // (node_modules/better-auth/dist/db/internal-adapter.mjs) matches on
+  // providerId === "credential" AND issuer === "local:credential" when looking
+  // up a credential account at sign-in. Without this column every password
+  // sign-in failed with 401 INVALID_EMAIL_OR_PASSWORD regardless of correct
+  // credentials, since the lookup could never match any row. This model was
+  // originally written from documentation before better-auth was actually
+  // installed and inspected. Fixed via migration add_account_issuer.
+  // (User, Session, and Verification were checked against the installed
+  // package at the same time and found to match with no other gaps.)
+  issuer                String
   userId                String
   user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   accessToken           String?
