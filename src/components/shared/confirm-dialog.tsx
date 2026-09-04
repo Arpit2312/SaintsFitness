@@ -49,8 +49,18 @@ export function ConfirmDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        // Block every dismissal path (X button, Escape, backdrop click) while
+        // a confirm is in flight — only the buttons below are allowed to
+        // change open state mid-request, and only via handleConfirm's own
+        // success path.
+        if (pending) return;
+        onOpenChange(next);
+      }}
+    >
+      <DialogContent showCloseButton={!pending}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
