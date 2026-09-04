@@ -32,11 +32,11 @@ Fee plans/payments/receipts, attendance marking, WhatsApp reminders, reports, SA
 
 ## Tech stack
 
-- **Framework:** Next.js 14 (App Router), TypeScript
-- **Styling:** Tailwind CSS + shadcn/ui (Radix primitives), themed to SAINTS's black/gold glassmorphism visual identity
+- **Framework:** Next.js 16 (App Router), TypeScript
+- **Styling:** Tailwind CSS v4 (CSS-based theme tokens) + shadcn/ui, themed to SAINTS's black/gold glassmorphism visual identity
 - **Database:** PostgreSQL, hosted on Neon
 - **ORM:** Prisma
-- **Auth:** Auth.js (NextAuth), Credentials provider, session-based; every route checks `role` (future-ready for Instructor/Receptionist/Accountant/Student roles)
+- **Auth:** Better Auth, email/password provider, session-based; every route checks `role` (future-ready for Instructor/Receptionist/Accountant/Student roles). *(Switched from the originally-specced Auth.js/NextAuth: verified at plan time that Auth.js v5 remains in beta after 2+ years and its own maintainers now direct new projects to Better Auth instead.)*
 - **File storage:** Vercel Blob (student photos)
 - **Hosting:** Vercel, deployed from a GitHub repo
 - **Testing:** Vitest (unit), Playwright (one E2E smoke test)
