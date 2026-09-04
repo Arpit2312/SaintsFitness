@@ -3433,11 +3433,12 @@ export function StudentHeader({
         </div>
       </div>
       <div className="flex gap-2">
-        <Button asChild variant="outline">
-          <Link href={`/students/${id}/edit`}>
-            <Pencil size={16} className="mr-2" />
-            Edit
-          </Link>
+        {/* This project's Button (base-ui, not Radix) has no `asChild` — use its
+            `render` prop instead, e.g. <Button render={<Link href="..." />}>Edit</Button>.
+            (Discovered in Task 17; see students-list.tsx for the working pattern.) */}
+        <Button render={<Link href={`/students/${id}/edit`} />} variant="outline">
+          <Pencil size={16} className="mr-2" />
+          Edit
         </Button>
         <DeleteStudentButton id={id} />
       </div>
