@@ -1,0 +1,288 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- Better Auth required models ---
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  role          String    @default("ADMIN")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  sessions      Session[]
+  accounts      Account[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+}
+
+model Verification {
+  id         String    @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime? @default(now())
+  updatedAt  DateTime? @updatedAt
+}
+
+// --- Academy domain models ---
+
+enum StudentStatus {
+  ACTIVE
+  INACTIVE
+  LEFT
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  LEAVE
+}
+
+enum PaymentMode {
+  CASH
+  UPI
+  ONLINE
+  BANK_TRANSFER
+}
+
+enum FeeFrequency {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+  CUSTOM
+}
+
+model Instructor {
+  id        String           @id @default(cuid())
+  name      String
+  mobile    String
+  bio       String?
+  deletedAt DateTime?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  batches   Batch[]
+  notes     InstructorNote[]
+}
+
+model Course {
+  id          String    @id @default(cuid())
+  name        String
+  category    String
+  description String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  batches     Batch[]
+}
+
+model Batch {
+  id           String       @id @default(cuid())
+  name         String
+  courseId     String
+  course       Course       @relation(fields: [courseId], references: [id])
+  instructorId String?
+  instructor   Instructor?  @relation(fields: [instructorId], references: [id])
+  timing       String
+  days         String[]
+  capacity     Int
+  deletedAt    DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  enrollments  Enrollment[]
+  attendance   Attendance[]
+}
+
+model Student {
+  id          String        @id @default(cuid())
+  studentCode String        @unique
+  name        String
+  photoUrl    String?
+  mobile      String
+  dob         DateTime
+  gender      Gender
+  joiningDate DateTime
+  status      StudentStatus @default(ACTIVE)
+  deletedAt   DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  address          Address?
+  emergencyContact EmergencyContact?
+  parentDetails    ParentDetails?
+  enrollments      Enrollment[]
+  feePlans         FeePlan[]
+  payments         Payment[]
+  attendance       Attendance[]
+  notes            InstructorNote[]
+  journeyProgress  JourneyProgress?
+  notifications    Notification[]
+}
+
+model Address {
+  id          String  @id @default(cuid())
+  studentId   String  @unique
+  student     Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  houseStreet String
+  area        String
+  city        String
+  state       String
+  pinCode     String
+}
+
+model EmergencyContact {
+  id           String  @id @default(cuid())
+  studentId    String  @unique
+  student      Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  name         String
+  relationship String
+  mobile       String
+}
+
+model ParentDetails {
+  id           String  @id @default(cuid())
+  studentId    String  @unique
+  student      Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  fatherName   String?
+  motherName   String?
+  guardianName String?
+  parentMobile String?
+}
+
+model Enrollment {
+  id               String   @id @default(cuid())
+  studentId        String
+  student          Student  @relation(fields: [studentId], references: [id])
+  batchId          String
+  batch            Batch    @relation(fields: [batchId], references: [id])
+  joiningBatchDate DateTime @default(now())
+
+  @@unique([studentId, batchId])
+}
+
+model FeePlan {
+  id          String       @id @default(cuid())
+  studentId   String
+  student     Student      @relation(fields: [studentId], references: [id])
+  totalAmount Decimal      @db.Decimal(10, 2)
+  frequency   FeeFrequency
+  dueDate     DateTime
+  discount    Decimal      @default(0) @db.Decimal(10, 2)
+  finalAmount Decimal      @db.Decimal(10, 2)
+  createdAt   DateTime     @default(now())
+  payments    Payment[]
+}
+
+model Payment {
+  id          String      @id @default(cuid())
+  studentId   String
+  student     Student     @relation(fields: [studentId], references: [id])
+  feePlanId   String?
+  feePlan     FeePlan?    @relation(fields: [feePlanId], references: [id])
+  amount      Decimal     @db.Decimal(10, 2)
+  paymentDate DateTime
+  mode        PaymentMode
+  period      String
+  notes       String?
+  createdAt   DateTime    @default(now())
+  receipt     Receipt?
+}
+
+model Receipt {
+  id            String   @id @default(cuid())
+  receiptNumber String   @unique
+  paymentId     String   @unique
+  payment       Payment  @relation(fields: [paymentId], references: [id])
+  createdAt     DateTime @default(now())
+}
+
+model Attendance {
+  id        String           @id @default(cuid())
+  studentId String
+  student   Student          @relation(fields: [studentId], references: [id])
+  batchId   String
+  batch     Batch            @relation(fields: [batchId], references: [id])
+  date      DateTime
+  status    AttendanceStatus
+  createdAt DateTime         @default(now())
+
+  @@unique([studentId, batchId, date])
+}
+
+model InstructorNote {
+  id           String     @id @default(cuid())
+  studentId    String
+  student      Student    @relation(fields: [studentId], references: [id])
+  instructorId String
+  instructor   Instructor @relation(fields: [instructorId], references: [id])
+  note         String
+  createdAt    DateTime   @default(now())
+}
+
+model JourneyProgress {
+  id               String   @id @default(cuid())
+  studentId        String   @unique
+  student          Student  @relation(fields: [studentId], references: [id])
+  danceLevel       String?
+  fitnessScore     Int?
+  consistencyScore Int?
+  updatedAt        DateTime @updatedAt
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  studentId String?
+  student   Student? @relation(fields: [studentId], references: [id])
+  type      String
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+// Atomic counter used for Student IDs (ST-00001) and Receipt numbers (SNT-2026-00001)
+model Sequence {
+  name  String @id
+  value Int    @default(0)
+}
