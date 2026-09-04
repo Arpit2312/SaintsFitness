@@ -2898,7 +2898,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 17: Student list page
+## Task 17: Student list page ✅ DONE (commit 348ea96, nativeButton={false} fix in 710df6c — this project's Button wraps base-ui, no `asChild`; use `render={<Link .../>}` + `nativeButton={false}` whenever it renders as a link, verified against base-ui source that this fully covers role + keyboard activation)
 
 **Architecture decision (already reflected in the code below): search/status/batch filtering stays client-side, over a single server-fetched list.** The Server Component fetches the full active-student list once (`await listStudents()`, no filter args) and the full batch option list, passes both down as props; the `"use client"` list component holds `search`/`status`/`batchId` state and filters in-memory via `useMemo` — no `router.refresh()`, no URL params, no server round-trip per keystroke. This is a deliberate choice for Phase 1's scale (a single academy, dozens to low hundreds of students) that avoids a class of bugs (debounce races, stale closures, loading flicker) the URL-search-param approach would introduce for no real benefit here. If the student base grows enough that shipping the full list becomes a real cost, revisit with `?search=&status=&batchId=` URL params — don't build that preemptively. This doesn't change the mutation-refresh pattern: any future create/edit/delete on this page still calls the server action then `router.refresh()`, same as Courses/Instructors/Batches.
 
