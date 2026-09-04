@@ -1261,7 +1261,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 10: Shared components — empty state, confirm dialog
+## Task 10: Shared components — empty state, confirm dialog ✅ DONE (commit 50a6ecd, hardened in 407468e + 875170a — ConfirmDialog now awaits onConfirm, disables both buttons while pending, shows an error toast + stays open on failure, and blocks the X/Escape/backdrop dismissal paths while pending, since it's reused at 8 future call sites)
 
 **Files:**
 - Create: `src/components/shared/empty-state.tsx`
