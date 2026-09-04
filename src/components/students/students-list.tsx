@@ -56,7 +56,9 @@ export function StudentsList({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold text-foreground">Students</h1>
-        <Button render={<Link href="/students/new" />}>
+        {/* nativeButton={false}: this Button renders as an <a> (via Link), not
+            a native <button> — base-ui warns/breaks a11y semantics without it. */}
+        <Button render={<Link href="/students/new" />} nativeButton={false}>
           <Plus size={16} className="mr-2" />
           Add Student
         </Button>
