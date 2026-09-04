@@ -10,6 +10,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { useGuardedDialogOpenChange } from "@/hooks/use-guarded-dialog";
 import { toast } from "sonner";
 
 export function ConfirmDialog({
@@ -48,23 +49,10 @@ export function ConfirmDialog({
     }
   }
 
+  const handleOpenChange = useGuardedDialogOpenChange(pending, onOpenChange);
+
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next, eventDetails) => {
-        // Block every dismissal path (X button, Escape, backdrop click) while
-        // a confirm is in flight — only the buttons below are allowed to
-        // change open state mid-request, and only via handleConfirm's own
-        // success path. Merely skipping onOpenChange isn't enough: base-ui's
-        // internal DialogStore applies `next` to its own state regardless of
-        // what this callback does, unless eventDetails.cancel() is called.
-        if (pending) {
-          eventDetails.cancel();
-          return;
-        }
-        onOpenChange(next);
-      }}
-    >
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent showCloseButton={!pending}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>

@@ -1701,7 +1701,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 ## Task 12: Instructors CRUD
 
 **IMPORTANT — apply the same two hardening patterns discovered in Task 11 to `InstructorFormDialog` below:**
-1. **Dismissal-while-pending hardening** (same as `ConfirmDialog`/`CourseFormDialog`): gate the Dialog root's `onOpenChange` on `submitting`, pass `showCloseButton={!submitting}` to `DialogContent`, disable all form fields while submitting.
+1. **Dismissal-while-pending hardening** (same as `ConfirmDialog`/`CourseFormDialog`): this is no longer an inline pattern to copy — import and use the shared `useGuardedDialogOpenChange` hook from `src/hooks/use-guarded-dialog.ts` (extracted in the "Extract dialog dismissal-guard into a shared, tested hook" commit). Call `const handleOpenChange = useGuardedDialogOpenChange(submitting, onOpenChange)` and pass `<Dialog open={open} onOpenChange={handleOpenChange}>`; still pass `showCloseButton={!submitting}` to `DialogContent` and disable all form fields while submitting.
 2. **Stale `defaultValues` on a persistent instance**: since the page reuses one `InstructorFormDialog` instance for both New and Edit (toggling `instructor`/`open` rather than remounting), react-hook-form's `defaultValues` only apply at initial mount. Add a `useEffect` that calls `reset(...)` with the correct values whenever `open`/`instructor` change (see `src/components/classes/course-form-dialog.tsx`'s committed version, NOT the inline snippet in Task 11 above, for the exact pattern to copy — the inline snippet above predates both fixes).
 
 The code block below is the ORIGINAL plan snippet and does NOT include either fix — do not copy it verbatim; use it for the field list/validation/server-action shape only, and apply both hardening patterns as `course-form-dialog.tsx` actually does.
@@ -1977,7 +1977,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ## Task 13: Batches CRUD
 
-**IMPORTANT — same two hardening patterns as Task 11/12 apply to `BatchFormDialog`:** dismissal-while-pending hardening (gate Dialog's `onOpenChange` on `submitting`, `showCloseButton={!submitting}`, disable fields), and re-seed via `useEffect`+`reset()` on `open`/`batch` change since this is also a persistent reused instance. Copy the pattern from the actually-committed `src/components/classes/course-form-dialog.tsx`, not the inline snippets in this plan.
+**IMPORTANT — same two hardening patterns as Task 11/12 apply to `BatchFormDialog`:** dismissal-while-pending hardening — use the shared `useGuardedDialogOpenChange` hook from `src/hooks/use-guarded-dialog.ts` exactly as `CourseFormDialog`/`InstructorFormDialog` do (`const handleOpenChange = useGuardedDialogOpenChange(submitting, onOpenChange)`, then `<Dialog open={open} onOpenChange={handleOpenChange}>`), still with `showCloseButton={!submitting}` and disabled fields — and re-seed via `useEffect`+`reset()` on `open`/`batch` change since this is also a persistent reused instance. Copy the pattern from the actually-committed `src/components/classes/course-form-dialog.tsx`, not the inline snippets in this plan. (If a Student form dialog is ever added, it should use this same hook rather than re-inlining the guard.)
 
 **Files:**
 - Create: `src/lib/validations/batch.ts`
