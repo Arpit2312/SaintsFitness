@@ -48,4 +48,30 @@ describe("studentSchema", () => {
     const result = studentSchema.safeParse({ ...validInput, batchId: "" });
     expect(result.success).toBe(false);
   });
+
+  it("requires emergency contact fields", () => {
+    const result = studentSchema.safeParse({ ...validInput, emergencyContactName: "" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects an invalid emergency contact mobile number", () => {
+    const result = studentSchema.safeParse({ ...validInput, emergencyContactMobile: "12345" });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts a student with all optional parent fields omitted", () => {
+    const { fatherName, motherName, guardianName, parentMobile, ...rest } = validInput;
+    const result = studentSchema.safeParse(rest);
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a student with parentMobile as an empty string", () => {
+    const result = studentSchema.safeParse({ ...validInput, parentMobile: "" });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects an invalid parentMobile when one is provided", () => {
+    const result = studentSchema.safeParse({ ...validInput, parentMobile: "12345" });
+    expect(result.success).toBe(false);
+  });
 });
