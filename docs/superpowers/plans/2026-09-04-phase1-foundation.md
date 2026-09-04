@@ -2571,7 +2571,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 15: Student server actions
+## Task 15: Student server actions ✅ DONE (commit 3a648bf, deduped updateStudent's upsert payloads in bdfd77b — 41 independent assertions verified createStudent/getStudent/listStudents filters/updateStudent upsert+photoUrl semantics/deleteStudent)
 
 **IMPORTANT — read/write file split (see Task 11/12/13 follow-up notes and the "Separate read queries from Server Action mutations" commit): `listStudents` and `getStudent` do NOT go in `src/actions/students.ts`.** They are pure reads and must live in a new `src/lib/queries/students.ts` with `import "server-only";` at the top (no `"use server"`) — same pattern as `src/lib/queries/courses.ts`/`instructors.ts`/`batches.ts`. `src/actions/students.ts` keeps only `createStudent`/`updateStudent`/`deleteStudent` under `"use server"`. The `StudentFilters` type and the `generateStudentCode` import belong wherever they're actually used — `StudentFilters` moves to the queries file with `listStudents`; `generateStudentCode` stays with `createStudent` in the actions file. The code block below still shows everything combined in one `"use server"` file — split it per this note; do not copy it verbatim.
 
