@@ -16,15 +16,21 @@ export function LoginForm() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (loading) return;
     setLoading(true);
-    const { error } = await authClient.signIn.email({ email, password });
-    setLoading(false);
-    if (error) {
-      toast.error(error.message ?? "Invalid email or password");
-      return;
+    try {
+      const { error } = await authClient.signIn.email({ email, password });
+      if (error) {
+        toast.error(error.message ?? "Invalid email or password");
+        return;
+      }
+      router.push("/dashboard");
+      router.refresh();
+    } catch {
+      toast.error("Something went wrong. Please check your connection and try again.");
+    } finally {
+      setLoading(false);
     }
-    router.push("/dashboard");
-    router.refresh();
   }
 
   return (
