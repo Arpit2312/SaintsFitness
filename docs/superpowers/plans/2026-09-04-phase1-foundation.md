@@ -539,7 +539,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 5: ID generation utility + Vitest setup
+## Task 5: ID generation utility + Vitest setup ✅ DONE (commit e0742b7 — vitest pinned to 3.2.7, not latest 5.x, since 5.x requires @types/node ^22 but this project pins ^20; live-verified against real Neon DB: sequential ID/receipt generation confirmed working)
 
 **Files:**
 - Create: `src/lib/ids.ts`
@@ -663,7 +663,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 6: Better Auth setup
+## Task 6: Better Auth setup ✅ DONE (commit f621a58, then security fix in ee1148f6 — the original config below left `/api/auth/sign-up/email` as a live public endpoint defaulting every account to role ADMIN; fixed by adding `emailAndPassword.disableSignUp: true` and `role.input: false`. See Task 7's updated seed approach below, which was changed by this fix.)
 
 **Files:**
 - Create: `src/lib/auth.ts`
@@ -756,12 +756,14 @@ npm install -D tsx
 
 - [ ] **Step 3: Write `prisma/seed.ts`**
 
+**Note:** Task 6 disabled Better Auth's `emailAndPassword.disableSignUp` to close a public self-signup vulnerability (verified: it blocks `auth.api.signUpEmail()` too, not just the HTTP route — same handler, same check). So the admin user must be created via direct Prisma writes using Better Auth's own password hasher, not via `auth.api.signUpEmail()`:
+
 ```ts
-import { auth } from "../src/lib/auth";
+import { hashPassword } from "better-auth/crypto";
 import { prisma } from "../src/lib/db";
 
 async function seedAdmin() {
-  const email = process.env.ADMIN_EMAIL ?? "arpitagrggc@gmail.com";
+  const email = (process.env.ADMIN_EMAIL ?? "arpitagrggc@gmail.com").toLowerCase();
   const password = process.env.ADMIN_SEED_PASSWORD;
   if (!password) {
     throw new Error("Set ADMIN_SEED_PASSWORD in .env before seeding.");
@@ -773,9 +775,21 @@ async function seedAdmin() {
     return;
   }
 
-  await auth.api.signUpEmail({
-    body: { email, password, name: "Admin" },
+  const hash = await hashPassword(password);
+
+  const user = await prisma.user.create({
+    data: { email, name: "Admin", emailVerified: true, role: "ADMIN" },
   });
+
+  await prisma.account.create({
+    data: {
+      userId: user.id,
+      providerId: "credential",
+      accountId: user.id,
+      password: hash,
+    },
+  });
+
   console.log(`Seeded admin user: ${email}`);
 }
 
