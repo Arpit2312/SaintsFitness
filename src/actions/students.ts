@@ -56,6 +56,25 @@ export async function createStudent(input: StudentInput, photoUrl?: string) {
 export async function updateStudent(id: string, input: StudentInput, photoUrl?: string) {
   const data = studentSchema.parse(input);
 
+  const addressData = {
+    houseStreet: data.houseStreet,
+    area: data.area,
+    city: data.city,
+    state: data.state,
+    pinCode: data.pinCode,
+  };
+  const emergencyContactData = {
+    name: data.emergencyContactName,
+    relationship: data.emergencyContactRelationship,
+    mobile: data.emergencyContactMobile,
+  };
+  const parentDetailsData = {
+    fatherName: data.fatherName || null,
+    motherName: data.motherName || null,
+    guardianName: data.guardianName || null,
+    parentMobile: data.parentMobile || null,
+  };
+
   await prisma.student.update({
     where: { id },
     data: {
@@ -66,54 +85,9 @@ export async function updateStudent(id: string, input: StudentInput, photoUrl?: 
       gender: data.gender,
       joiningDate: data.joiningDate,
       status: data.status,
-      address: {
-        upsert: {
-          create: {
-            houseStreet: data.houseStreet,
-            area: data.area,
-            city: data.city,
-            state: data.state,
-            pinCode: data.pinCode,
-          },
-          update: {
-            houseStreet: data.houseStreet,
-            area: data.area,
-            city: data.city,
-            state: data.state,
-            pinCode: data.pinCode,
-          },
-        },
-      },
-      emergencyContact: {
-        upsert: {
-          create: {
-            name: data.emergencyContactName,
-            relationship: data.emergencyContactRelationship,
-            mobile: data.emergencyContactMobile,
-          },
-          update: {
-            name: data.emergencyContactName,
-            relationship: data.emergencyContactRelationship,
-            mobile: data.emergencyContactMobile,
-          },
-        },
-      },
-      parentDetails: {
-        upsert: {
-          create: {
-            fatherName: data.fatherName || null,
-            motherName: data.motherName || null,
-            guardianName: data.guardianName || null,
-            parentMobile: data.parentMobile || null,
-          },
-          update: {
-            fatherName: data.fatherName || null,
-            motherName: data.motherName || null,
-            guardianName: data.guardianName || null,
-            parentMobile: data.parentMobile || null,
-          },
-        },
-      },
+      address: { upsert: { create: addressData, update: addressData } },
+      emergencyContact: { upsert: { create: emergencyContactData, update: emergencyContactData } },
+      parentDetails: { upsert: { create: parentDetailsData, update: parentDetailsData } },
     },
   });
 
