@@ -30,7 +30,7 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
+  --color-muted: var(--muted-brand);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
@@ -98,6 +98,7 @@
   --danger: #e05252;
   --warning: #d4a72c;
   --success: #4caf7d;
+  --muted-brand: #9a9a9e;
 }
 
 .dark {
@@ -139,6 +140,7 @@
   --danger: #e05252;
   --warning: #d4a72c;
   --success: #4caf7d;
+  --muted-brand: #9a9a9e;
 }
 
 @layer base {
