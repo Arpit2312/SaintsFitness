@@ -908,7 +908,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 8: Middleware, login page, logout
+## Task 8: Middleware, login page, logout ✅ DONE (commit ee247a6, hardened against network failures/duplicate submits in bd1f62e + d682738 — login/logout no longer stick on a failed request. Note: Next.js 16 deprecates the "middleware" file convention in favor of "proxy"; still fully functional, migration via `npx @next/codemod@canary middleware-to-proxy .` deferred as a cheap future cleanup.)
 
 **Files:**
 - Create: `src/middleware.ts`
