@@ -1700,7 +1700,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 12: Instructors CRUD
+## Task 12: Instructors CRUD ✅ DONE (commit 2897fda, then two architectural fixes that touched both Courses and Instructors together: fb5d82e converted list pages to Server Component data-fetching + router.refresh() — fixes a real react-hooks/set-state-in-effect ESLint error; 57f7adc split read queries into src/lib/queries/ guarded by "server-only", separate from src/actions/'s "use server" mutations, since mixing them was a footgun verified via a real deliberate-breakage build failure. This is now the established pattern — see courses-list.tsx/courses/page.tsx/src/lib/queries/courses.ts as the reference for Task 13+.)
 
 **IMPORTANT — apply the same two hardening patterns discovered in Task 11 to `InstructorFormDialog` below:**
 1. **Dismissal-while-pending hardening** (same as `ConfirmDialog`/`CourseFormDialog`): this is no longer an inline pattern to copy — import and use the shared `useGuardedDialogOpenChange` hook from `src/hooks/use-guarded-dialog.ts` (extracted in the "Extract dialog dismissal-guard into a shared, tested hook" commit). Call `const handleOpenChange = useGuardedDialogOpenChange(submitting, onOpenChange)` and pass `<Dialog open={open} onOpenChange={handleOpenChange}>`; still pass `showCloseButton={!submitting}` to `DialogContent` and disable all form fields while submitting.
