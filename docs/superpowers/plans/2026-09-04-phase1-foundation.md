@@ -3790,7 +3790,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 21: Future-phase nav stubs + Settings (change password)
+## Task 21: Future-phase nav stubs + Settings (change password) ✅ DONE (commit d91c10d — verification included an actual password change-and-revert cycle against the real admin account, confirmed via fresh login that the revert held)
 
 **Files:**
 - Create: `src/components/shared/phase-stub.tsx`
