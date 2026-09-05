@@ -12,7 +12,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { EmptyState } from "@/components/shared/empty-state";
-import type { listStudentFeeStatuses } from "@/lib/queries/fees";
 import type { PeriodStatus } from "@/lib/fees/fee-history";
 
 // Mirrors `Awaited<ReturnType<typeof listStudentFeeStatuses>>[number]`, but
