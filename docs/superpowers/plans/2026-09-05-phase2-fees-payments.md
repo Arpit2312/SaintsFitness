@@ -142,7 +142,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 2: Period enumeration + status calculation (TDD)
+## Task 2: Period enumeration + status calculation (TDD) ✅ DONE (commit 783006b, extended with exported UTC helpers + formatMonthYear in 912a506 — date-fns's addMonths/startOfMonth/endOfMonth operate in local time and silently corrupted month-boundary math against UTC-anchored dates in this IST environment; the code block below is the corrected, actually-committed version, not the original draft)
 
 **Files:**
 - Create: `src/lib/fees/periods.ts`
@@ -288,10 +288,57 @@ Expected: FAIL — `Cannot find module '@/lib/fees/periods'`.
 
 - [ ] **Step 3: Implement `src/lib/fees/periods.ts`**
 
+**Note: this is the exact, current content of the actually-committed `src/lib/fees/periods.ts` (commit `912a506`), not the plan's original draft.** The original draft imported `addMonths`/`startOfMonth`/`endOfMonth` from `date-fns` — implementing that literally fails 4 of the 16 tests below, because date-fns's month arithmetic operates in local time while these dates are UTC-instant midnights, and this machine's IST (UTC+5:30) timezone silently shifts results by a day. The code below reimplements those three functions in UTC instead (same names/signatures, drop-in), and adds `formatMonthYear` for UTC-safe display formatting (needed by Tasks 9/10/12):
+
 ```ts
 import type { FeeFrequency } from "@prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";
-import { addMonths, startOfMonth, endOfMonth } from "date-fns";
+
+/**
+ * UTC-based month arithmetic.
+ *
+ * Plan/period boundaries are calendar dates (e.g. "2026-06-01") which, per
+ * the `Date` spec, parse as UTC instants. date-fns's `addMonths` /
+ * `startOfMonth` / `endOfMonth` operate on the *local* calendar though, so
+ * combining them with UTC-instant inputs silently shifts results by a day
+ * whenever the host runs outside UTC -- verified in this environment
+ * (Asia/Calcutta, UTC+5:30): `startOfMonth(addMonths(new
+ * Date("2026-06-01"), 1))` comes back as `2026-06-30T18:30:00.000Z`
+ * instead of `2026-07-01`. Doing the month math in UTC directly keeps
+ * period boundaries stable regardless of server timezone.
+ *
+ * Invariant: `date` must already be a start-of-month date. Unlike date-fns's
+ * real `addMonths`, this does not clamp day-of-month overflow to the last day
+ * of the target month -- it's only exercised here against day-1 inputs, so
+ * that clamping behavior was never needed.
+ */
+export function addMonths(date: Date, months: number): Date {
+  const d = new Date(date.getTime());
+  d.setUTCMonth(d.getUTCMonth() + months);
+  return d;
+}
+
+export function startOfMonth(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+}
+
+export function endOfMonth(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0, 23, 59, 59, 999));
+}
+
+/**
+ * Formats a UTC-anchored date as "MMM yyyy" (e.g. "Sep 2026") without going
+ * through the host's local timezone -- date-fns's `format` reads local wall-
+ * clock time, so a period boundary like `Date.UTC(2026, 6, 1)` would render
+ * as "Jun 2026" instead of "Jul 2026" in a negative-UTC-offset timezone.
+ */
+export function formatMonthYear(date: Date): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(date);
+}
 
 export type PeriodStatus = "PAID" | "PARTIAL" | "DUE" | "OVERDUE";
 
@@ -376,7 +423,11 @@ export function calculatePeriodStatus(
   return "DUE";
 }
 
-/** The coverage range a new payment of `periodsCovered` periods would span, starting at `coverageStart`. */
+/**
+ * The coverage range a new payment of `periodsCovered` periods would span,
+ * starting at `coverageStart`. Invariant: `coverageStart` must be a
+ * start-of-month date -- every current call site already passes one.
+ */
 export function computeCoverageRange(
   coverageStart: Date,
   periodsCovered: number,
@@ -390,6 +441,8 @@ export function computeCoverageRange(
   return { coverageStart, coverageEnd };
 }
 ```
+
+The test file also gained additional cases beyond the original 16 shown above, covering `formatMonthYear` and the now-exported UTC helpers directly — see the actual committed `tests/unit/periods.test.ts` (48 tests pass across the whole suite as of this task).
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
