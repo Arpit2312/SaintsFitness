@@ -10,6 +10,15 @@ import { revalidatePath } from "next/cache";
 
 export async function saveFeePlan(studentId: string, input: FeePlanInput) {
   const data = feePlanSchema.parse(input);
+
+  const student = await prisma.student.findUnique({
+    where: { id: studentId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!student) {
+    throw new Error("Student not found.");
+  }
+
   const finalAmount = data.totalAmount - data.discount;
 
   await prisma.feePlan.upsert({
@@ -33,10 +42,19 @@ export async function saveFeePlan(studentId: string, input: FeePlanInput) {
 
   revalidatePath(`/students/${studentId}`);
   revalidatePath("/fees");
+  revalidatePath("/dashboard");
 }
 
 export async function createPayment(studentId: string, input: PaymentInput) {
   const data = paymentSchema.parse(input);
+
+  const student = await prisma.student.findUnique({
+    where: { id: studentId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!student) {
+    throw new Error("Student not found.");
+  }
 
   const plan = await prisma.feePlan.findUnique({
     where: { studentId },
