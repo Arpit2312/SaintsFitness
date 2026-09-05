@@ -20,7 +20,7 @@
 
 ---
 
-## Task 1: Schema migration — Payment coverage range + one-plan-per-student
+## Task 1: Schema migration — Payment coverage range + one-plan-per-student ✅ DONE (commit 66dbac3 — `prisma migrate dev` can't run in this non-interactive shell when it needs to show any confirmation prompt; worked around via `migrate diff` → manual migration folder → `migrate deploy`, verified equivalent via `migrate status` showing no drift)
 
 **Files:**
 - Modify: `prisma/schema.prisma`
