@@ -36,7 +36,32 @@ export function computeFeeHistory(
   const periods = enumeratePeriods(planStartDate, frequency, amountPerPeriod, today);
   const paidPerPeriod = periods.map(() => new Decimal(0));
 
-  const sortedPayments = [...payments].sort((a, b) => a.paymentDate.getTime() - b.paymentDate.getTime());
+  // Sort by coverageStart (then range-length ascending, then paymentDate as a
+  // final tiebreak) -- NOT by paymentDate alone. A payment's coverage range
+  // determines which periods it can settle, so processing order must be tied
+  // to which period a payment is fundamentally FOR, not to when it was typed
+  // into the system. Consider a plan with Sep/Oct/Nov each due 1500: a narrow
+  // payment (800, Sep only) and a wide payment (3000, Sep-Nov). If the wide
+  // payment is logged with an earlier paymentDate than the narrow one (e.g.
+  // an admin backdates a delayed cash payment to when it was actually
+  // received, and that backdated date lands earlier than a payment already
+  // logged in the interim), sorting by paymentDate would process the wide
+  // payment first -- it would fully consume Sep/Oct/Nov's dues with its own
+  // 3000, leaving the narrow payment's 800 with nowhere left to go within its
+  // own range, silently dropping it from totalPaid (3000 instead of the
+  // correct 3800). Sorting by coverageStart/range-length first means the
+  // narrow, Sep-only payment always claims Sep before the wider payment can
+  // spill into it, regardless of data-entry order. Do not "simplify" this
+  // back to a plain paymentDate sort.
+  const sortedPayments = [...payments].sort((a, b) => {
+    const startDiff = a.coverageStart.getTime() - b.coverageStart.getTime();
+    if (startDiff !== 0) return startDiff;
+    const aLength = a.coverageEnd.getTime() - a.coverageStart.getTime();
+    const bLength = b.coverageEnd.getTime() - b.coverageStart.getTime();
+    const lengthDiff = aLength - bLength;
+    if (lengthDiff !== 0) return lengthDiff;
+    return a.paymentDate.getTime() - b.paymentDate.getTime();
+  });
   for (const pay of sortedPayments) {
     const coveredIndices = periods
       .map((p, i) => ({ p, i }))

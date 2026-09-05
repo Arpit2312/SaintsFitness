@@ -79,6 +79,37 @@ describe("computeFeeHistory", () => {
     periods.forEach((p) => expect(p.amountPaid.toString()).toBe("0"));
     expect(totalPaid.toString()).toBe("0");
   });
+
+  it("doesn't lose money when a wide payment is logged with an earlier paymentDate than a narrow payment covering the same period (order-independence)", () => {
+    // June only, partial -- e.g. a delayed cash payment backdated to when it was actually received.
+    const narrowPayment = payment({
+      amount: new Decimal(800),
+      coverageStart: new Date("2026-06-01"),
+      coverageEnd: new Date("2026-06-30"),
+    });
+    // June-August, enough to cover the rest -- logged after the narrow payment but with an earlier paymentDate.
+    const widePayment = payment({
+      amount: new Decimal(3000),
+      coverageStart: new Date("2026-06-01"),
+      coverageEnd: new Date("2026-08-31"),
+    });
+    const expectedTotalPaid = "3800"; // 800 + 3000, regardless of ordering
+
+    const wideLoggedFirstButDatedEarlier = [
+      { ...widePayment, paymentDate: new Date("2026-06-01") },
+      { ...narrowPayment, paymentDate: new Date("2026-06-10") },
+    ];
+    const narrowLoggedFirstAndDatedEarlier = [
+      { ...narrowPayment, paymentDate: new Date("2026-06-01") },
+      { ...widePayment, paymentDate: new Date("2026-06-10") },
+    ];
+
+    const resultA = computeFeeHistory(PLAN_START, "MONTHLY", new Decimal(1500), wideLoggedFirstButDatedEarlier, TODAY);
+    const resultB = computeFeeHistory(PLAN_START, "MONTHLY", new Decimal(1500), narrowLoggedFirstAndDatedEarlier, TODAY);
+
+    expect(resultA.totalPaid.toString()).toBe(expectedTotalPaid);
+    expect(resultB.totalPaid.toString()).toBe(expectedTotalPaid);
+  });
 });
 
 describe("getCoverageStartForNewPayment", () => {
