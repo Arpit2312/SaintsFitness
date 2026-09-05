@@ -8,7 +8,13 @@ export const studentSchema = z.object({
   dob: z.coerce.date().refine((d) => d < new Date(), "Date of birth must be in the past"),
   gender: z.enum(["MALE", "FEMALE", "OTHER"]),
   joiningDate: z.coerce.date(),
-  status: z.enum(["ACTIVE", "INACTIVE", "LEFT"]).default("ACTIVE"),
+  // No `.default()` here: zodResolver types its Resolver against zod's
+  // *input* type, while `StudentInput` (z.infer) is the *output* type — a
+  // schema-level default makes status optional on input but required on
+  // output, so useForm<StudentInput>({ resolver: zodResolver(studentSchema) })
+  // fails to type-check. The form's defaultValues already supplies "ACTIVE",
+  // so the schema-level default was redundant.
+  status: z.enum(["ACTIVE", "INACTIVE", "LEFT"]),
   batchId: z.string().min(1, "Batch is required"),
 
   houseStreet: z.string().min(1, "Required"),
