@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { Decimal } from "@prisma/client/runtime/library";
-import { computeFeeHistory, getCoverageStartForNewPayment, type PaymentForAllocation } from "@/lib/fees/fee-history";
+import {
+  computeFeeHistory,
+  getCoverageStartForNewPayment,
+  resolveActualPeriodsCovered,
+  type PaymentForAllocation,
+} from "@/lib/fees/fee-history";
+import { computeCoverageRange } from "@/lib/fees/periods";
 
 const PLAN_START = new Date("2026-06-01");
 const TODAY = new Date("2026-09-04"); // periods: June, July, August, September
@@ -286,5 +292,129 @@ describe("getCoverageStartForNewPayment", () => {
     const customStart = new Date("2026-09-01");
     const start = getCoverageStartForNewPayment(customStart, "CUSTOM", new Decimal(5000), [], TODAY);
     expect(start).toEqual(customStart);
+  });
+});
+
+describe("resolveActualPeriodsCovered", () => {
+  // Reproduction constants matching the bug description: Plan ₹1,500/month
+  // from June, June already ₹800-paid (PARTIAL, ₹700 remaining), TODAY is
+  // September 4th so periods June/July/August/September are enumerated.
+  const AMOUNT_PER_PERIOD = new Decimal(1500);
+  const JUNE_PARTIAL = [payment({ amount: new Decimal(800) })]; // June only, 800 of 1500
+
+  it("returns exactly minPeriodsCovered when the amount leaves no leftover (no change from current behavior)", () => {
+    // No existing payments -- June, July, August each fully due (1500 each).
+    // 4500 exactly settles 3 periods with nothing left over.
+    const count = resolveActualPeriodsCovered(
+      PLAN_START,
+      "MONTHLY",
+      AMOUNT_PER_PERIOD,
+      [],
+      TODAY,
+      new Date("2026-06-01"),
+      new Decimal(4500),
+      3
+    );
+    expect(count).toBe(3);
+  });
+
+  it("extends past minPeriodsCovered to consume leftover money (the bug reproduction)", () => {
+    // June already has 800/1500 paid (700 remaining). Admin types amount=4000
+    // and periodsCovered=3, intending June-August. 700 (June) + 1500 (July) +
+    // 1500 (August) = 3700, leaving 300 leftover that must spill into
+    // September rather than vanish -- so this must return 4, not 3.
+    const count = resolveActualPeriodsCovered(
+      PLAN_START,
+      "MONTHLY",
+      AMOUNT_PER_PERIOD,
+      JUNE_PARTIAL,
+      TODAY,
+      new Date("2026-06-01"), // coverageStartBase: June, still PARTIAL
+      new Decimal(4000),
+      3
+    );
+    expect(count).toBe(4);
+  });
+
+  it("extends into periods enumeratePeriods hasn't generated yet (paying ahead of schedule)", () => {
+    // TODAY is early August, so only June/July/August are enumerated so far.
+    // An amount large enough to fully settle all three AND reach two more
+    // (unenumerated) periods must extend the count past what's currently known.
+    const earlyToday = new Date("2026-08-04"); // periods: June, July, August only
+    const count = resolveActualPeriodsCovered(
+      PLAN_START,
+      "MONTHLY",
+      AMOUNT_PER_PERIOD,
+      [],
+      earlyToday,
+      new Date("2026-06-01"),
+      new Decimal(7500), // exactly 5 periods' worth: June-October
+      1
+    );
+    expect(count).toBe(5);
+  });
+
+  it("always returns 1 for CUSTOM frequency regardless of amount (one-time fee, no further periods)", () => {
+    const count = resolveActualPeriodsCovered(
+      new Date("2026-06-01"),
+      "CUSTOM",
+      new Decimal(5000),
+      [],
+      TODAY,
+      new Date("2026-06-01"),
+      new Decimal(999999),
+      1
+    );
+    expect(count).toBe(1);
+  });
+
+  it("caps at MAX_PERIODS as a fat-finger guard for an absurdly large amount", () => {
+    const count = resolveActualPeriodsCovered(
+      PLAN_START,
+      "MONTHLY",
+      AMOUNT_PER_PERIOD,
+      [],
+      TODAY,
+      new Date("2026-06-01"),
+      new Decimal(1_000_000_000), // an admin accidentally adding several zeros
+      1
+    );
+    expect(count).toBe(120);
+    expect(count).toBeLessThan(1_000_000_000 / 1500); // sane relative to the raw amount too
+  });
+
+  it("end-to-end: the resolved range makes computeFeeHistory's totalPaid equal the TRUE sum of every payment (no leftover silently discarded)", () => {
+    // Same bug reproduction as above, carried all the way through
+    // computeCoverageRange + computeFeeHistory, mirroring what createPayment
+    // now does. Before the fix, totalPaid would be 4500 (800 + 3700 that fits
+    // within the under-declared Jun-Aug range) with 300 dropped; after the
+    // fix it must be 4800 (800 + the full 4000), and September must show as
+    // PARTIAL with 300 paid instead of DUE with 0 paid.
+    const coverageStartBase = new Date("2026-06-01");
+    const newPaymentAmount = new Decimal(4000);
+    const actualPeriods = resolveActualPeriodsCovered(
+      PLAN_START,
+      "MONTHLY",
+      AMOUNT_PER_PERIOD,
+      JUNE_PARTIAL,
+      TODAY,
+      coverageStartBase,
+      newPaymentAmount,
+      3
+    );
+    const { coverageStart, coverageEnd } = computeCoverageRange(coverageStartBase, actualPeriods, "MONTHLY");
+
+    const allPayments: PaymentForAllocation[] = [
+      ...JUNE_PARTIAL,
+      { amount: newPaymentAmount, paymentDate: new Date("2026-09-01"), coverageStart, coverageEnd },
+    ];
+    const { periods, totalPaid } = computeFeeHistory(PLAN_START, "MONTHLY", AMOUNT_PER_PERIOD, allPayments, TODAY);
+
+    const trueSum = allPayments.reduce((sum, p) => sum.plus(p.amount), new Decimal(0));
+    expect(trueSum.toString()).toBe("4800"); // 800 + 4000
+    expect(totalPaid.toString()).toBe("4800");
+
+    expect(periods[3].status).toBe("PARTIAL"); // September
+    expect(periods[3].amountPaid.toString()).toBe("300");
   });
 });

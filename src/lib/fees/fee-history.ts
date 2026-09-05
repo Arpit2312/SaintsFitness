@@ -162,6 +162,67 @@ export function nextCoverageStartFromPeriods(
 }
 
 /**
+ * How many periods (starting at coverageStartBase) a payment of `amount`
+ * actually reaches, given the plan's current unpaid state. Never returns
+ * fewer than `minPeriodsCovered` (the admin's stated minimum intent -- what
+ * they typed into "Periods Covered"), but extends further if the amount has
+ * money left over after settling that many periods in full -- so a
+ * payment's recorded coverage range always accounts for every rupee
+ * collected, and waterfallAllocate (which only ever allocates within a
+ * payment's own declared range) never has leftover money silently fall
+ * outside it.
+ *
+ * This is the write-side fix for a real money-tracking bug: `createPayment`
+ * used to pass the admin-typed periodsCovered straight into
+ * computeCoverageRange, independent of `amount`. If `amount` happened to
+ * exceed what those periods needed (e.g. admin rounds up, or periods and
+ * amount just don't line up), the leftover had no period left inside the
+ * payment's own declared range to land on, and waterfallAllocate silently
+ * discards anything that doesn't fit within that range -- so totalPaid came
+ * out lower than the true sum of every payment's amount. Extending
+ * coverageEnd here (rather than changing the read-side allocation itself)
+ * keeps the already-hardened, heavily-verified computeFeeHistory/
+ * waterfallAllocate pair untouched.
+ *
+ * Capped at MAX_PERIODS as a fat-finger guard (an accidental extra digit on
+ * `amount` shouldn't produce a coverage range decades into the future).
+ */
+export function resolveActualPeriodsCovered(
+  planStartDate: Date,
+  frequency: FeeFrequency,
+  amountPerPeriod: Decimal,
+  existingPayments: PaymentForAllocation[],
+  today: Date,
+  coverageStartBase: Date,
+  amount: Decimal,
+  minPeriodsCovered: number
+): number {
+  // CUSTOM frequency is a one-time fee -- no further periods exist to extend into.
+  if (frequency === "CUSTOM") return 1;
+
+  const MAX_PERIODS = 120; // ~10 years monthly; generous fat-finger ceiling, distinct from the UI's own 60-period input cap since this can legitimately need to extend further than what was typed
+
+  const { periods } = computeFeeHistory(planStartDate, frequency, amountPerPeriod, existingPayments, today);
+  const remainingByStartTime = new Map(periods.map((p) => [p.start.getTime(), p.amountDue.minus(p.amountPaid)]));
+
+  let remainingAmount = amount;
+  let periodStart = coverageStartBase;
+  let count = 0;
+
+  while (count < minPeriodsCovered || (remainingAmount.gt(0) && count < MAX_PERIODS)) {
+    if (count >= MAX_PERIODS) break;
+    // A period beyond what enumeratePeriods has generated so far (i.e. in
+    // the future relative to `today`) is necessarily fully unpaid -- its
+    // remaining due is simply the plan's full per-period amount.
+    const due = remainingByStartTime.get(periodStart.getTime()) ?? amountPerPeriod;
+    remainingAmount = remainingAmount.minus(Decimal.max(due, 0));
+    count += 1;
+    periodStart = advancePeriodStart(periodStart, frequency);
+  }
+  return count;
+}
+
+/**
  * Where a new payment should start covering from: the first period that
  * isn't fully PAID yet, or -- if every enumerated period is fully paid --
  * one period past the last enumerated period (paying ahead of schedule).

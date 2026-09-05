@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { paymentSchema, type PaymentInput } from "@/lib/validations/payment";
-import { computeCoverageRange, formatMonthYear } from "@/lib/fees/periods";
+import { computeCoverageRange, formatMonthYear, previewActualPeriodsCovered } from "@/lib/fees/periods";
 import { createPayment } from "@/actions/fees";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,6 +42,8 @@ export function AddPaymentDialog({
   studentId,
   frequency,
   nextCoverageStart,
+  periods,
+  amountPerPeriod,
   onSuccess,
 }: {
   open: boolean;
@@ -49,6 +51,12 @@ export function AddPaymentDialog({
   studentId: string;
   frequency: FeeFrequency;
   nextCoverageStart: Date;
+  // Already-serialized periods (SerializedPeriod's amountDue/amountPaid, as
+  // plain numbers) and the plan's per-period amount -- used only to preview
+  // how far a typed amount actually reaches, mirroring what createPayment
+  // will really record. See previewActualPeriodsCovered's doc comment.
+  periods: { start: Date; amountDue: number; amountPaid: number }[];
+  amountPerPeriod: number;
   onSuccess?: () => void;
 }) {
   const [submitting, setSubmitting] = useState(false);
@@ -75,13 +83,27 @@ export function AddPaymentDialog({
   // "0" is a truthy string that bypasses the `|| 1` fallback and produces a
   // backwards coverage range (0 months added, i.e. end before start).
   const periodsCovered = Number(watch("periodsCovered")) || 1;
+  const amountTyped = Number(watch("amount")) || 0;
+  // periodsCovered is the admin's stated MINIMUM, not the final word: if
+  // amountTyped fully settles that many periods with money left over,
+  // createPayment (src/actions/fees.ts, via resolveActualPeriodsCovered)
+  // extends the recorded range further to consume it -- so the preview must
+  // do the same, or it would show a range narrower than what's actually
+  // about to be saved.
+  const actualPeriodsCovered = useMemo(
+    () =>
+      frequency === "CUSTOM"
+        ? 1
+        : previewActualPeriodsCovered(periods, amountPerPeriod, frequency, nextCoverageStart, amountTyped, periodsCovered),
+    [periods, amountPerPeriod, frequency, nextCoverageStart, amountTyped, periodsCovered]
+  );
   const coveragePreview = useMemo(() => {
     if (frequency === "CUSTOM") return "One-time fee";
-    const { coverageStart, coverageEnd } = computeCoverageRange(nextCoverageStart, periodsCovered, frequency);
+    const { coverageStart, coverageEnd } = computeCoverageRange(nextCoverageStart, actualPeriodsCovered, frequency);
     const startLabel = formatMonthYear(coverageStart);
     const endLabel = formatMonthYear(coverageEnd);
     return startLabel === endLabel ? startLabel : `${startLabel} – ${endLabel}`;
-  }, [frequency, nextCoverageStart, periodsCovered]);
+  }, [frequency, nextCoverageStart, actualPeriodsCovered]);
 
   async function onSubmit(data: PaymentInput) {
     setSubmitting(true);
@@ -158,6 +180,13 @@ export function AddPaymentDialog({
           )}
           <div className="glass-card p-3 text-sm text-muted">
             This will cover: <span className="text-gold">{coveragePreview}</span>
+            {actualPeriodsCovered > periodsCovered && (
+              <p className="mt-1 text-xs">
+                Extended beyond the {periodsCovered} period{periodsCovered === 1 ? "" : "s"} entered above --
+                the amount covers more than that, so the extra is applied forward instead of being left
+                unaccounted for.
+              </p>
+            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="notes">Notes</Label>

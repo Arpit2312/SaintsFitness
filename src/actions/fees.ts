@@ -4,8 +4,9 @@ import { prisma } from "@/lib/db";
 import { generateReceiptNumber } from "@/lib/ids";
 import { feePlanSchema, type FeePlanInput } from "@/lib/validations/fee-plan";
 import { paymentSchema, type PaymentInput } from "@/lib/validations/payment";
-import { getCoverageStartForNewPayment } from "@/lib/fees/fee-history";
+import { getCoverageStartForNewPayment, resolveActualPeriodsCovered } from "@/lib/fees/fee-history";
 import { computeCoverageRange } from "@/lib/fees/periods";
+import { Decimal } from "@prisma/client/runtime/library";
 import { revalidatePath } from "next/cache";
 
 export async function saveFeePlan(studentId: string, input: FeePlanInput) {
@@ -72,7 +73,25 @@ export async function createPayment(studentId: string, input: PaymentInput) {
     plan.payments,
     today
   );
-  const { coverageStart, coverageEnd } = computeCoverageRange(coverageStartBase, data.periodsCovered, plan.frequency);
+  // periodsCovered (as typed by the admin) is a MINIMUM, not the final word:
+  // if `amount` fully settles those periods with money left over, the
+  // payment's declared range must extend to cover as many additional
+  // periods as that leftover actually reaches -- otherwise the extra money
+  // has no period left inside the payment's own range to land on, and
+  // waterfallAllocate (which only ever allocates within a payment's own
+  // declared coverage range) silently drops it from totalPaid. See
+  // resolveActualPeriodsCovered's doc comment for the full bug writeup.
+  const actualPeriodsCovered = resolveActualPeriodsCovered(
+    plan.dueDate,
+    plan.frequency,
+    plan.finalAmount,
+    plan.payments,
+    today,
+    coverageStartBase,
+    new Decimal(data.amount),
+    data.periodsCovered
+  );
+  const { coverageStart, coverageEnd } = computeCoverageRange(coverageStartBase, actualPeriodsCovered, plan.frequency);
   const receiptNumber = await generateReceiptNumber();
 
   const payment = await prisma.payment.create({

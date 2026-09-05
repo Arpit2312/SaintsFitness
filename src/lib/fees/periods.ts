@@ -141,6 +141,49 @@ export function calculatePeriodStatus(
 }
 
 /**
+ * Client-safe, plain-number preview of `resolveActualPeriodsCovered`
+ * (src/lib/fees/fee-history.ts) for the AddPaymentDialog's live coverage
+ * preview. That function's real, authoritative counterpart runs server-side
+ * in Decimal against the plan's actual payment rows; this mirrors its exact
+ * loop against the already-serialized `periods` (amountDue/amountPaid as
+ * plain numbers, per SerializedPeriod) the client already has on hand, so
+ * the dialog doesn't have to ship raw payment rows down to render a
+ * preview. Never authoritative -- createPayment always recomputes for real
+ * before writing coverageEnd -- so plain-number rounding here is harmless.
+ *
+ * Kept in this client-safe module (rather than fee-history.ts, which is
+ * fine to import client-side too but is Decimal-typed throughout) so the
+ * numeric-only contract is obvious at the import site.
+ */
+export function previewActualPeriodsCovered(
+  periods: { start: Date; amountDue: number; amountPaid: number }[],
+  amountPerPeriod: number,
+  frequency: FeeFrequency,
+  coverageStartBase: Date,
+  amount: number,
+  minPeriodsCovered: number
+): number {
+  if (frequency === "CUSTOM") return 1;
+
+  const MAX_PERIODS = 120; // mirrors resolveActualPeriodsCovered's fat-finger ceiling
+
+  const remainingByStartTime = new Map(periods.map((p) => [p.start.getTime(), p.amountDue - p.amountPaid]));
+
+  let remainingAmount = amount;
+  let periodStart = coverageStartBase;
+  let count = 0;
+
+  while (count < minPeriodsCovered || (remainingAmount > 0 && count < MAX_PERIODS)) {
+    if (count >= MAX_PERIODS) break;
+    const due = remainingByStartTime.get(periodStart.getTime()) ?? amountPerPeriod;
+    remainingAmount -= Math.max(due, 0);
+    count += 1;
+    periodStart = advancePeriodStart(periodStart, frequency);
+  }
+  return count;
+}
+
+/**
  * The coverage range a new payment of `periodsCovered` periods would span,
  * starting at `coverageStart`. Invariant: `coverageStart` must be a
  * start-of-month date -- every current call site already passes one.

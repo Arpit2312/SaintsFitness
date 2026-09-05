@@ -103,6 +103,8 @@ export function StudentFeesTab({
         studentId={studentId}
         frequency={plan.frequency}
         nextCoverageStart={nextCoverageStart}
+        periods={periods}
+        amountPerPeriod={plan.finalAmount}
         onSuccess={() => router.refresh()}
       />
     </div>
