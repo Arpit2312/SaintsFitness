@@ -2409,7 +2409,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 **Files:** none (verification only)
 
-- [ ] **Step 1: Full regression pass**
+- [x] **Step 1: Full regression pass**
 
 ```bash
 npx vitest run
@@ -2430,15 +2430,15 @@ npx next build
 
 Expected: clean, `/fees`, `/students/[id]` (still), and `/receipts/[paymentId]` all present in the route table.
 
-- [ ] **Step 2: End-to-end manual walkthrough**
+- [x] **Step 2: End-to-end manual walkthrough** (adapted to a data-layer walkthrough — see header note above and the Task 13 report for exact figures; browser login remains off-limits under this session's safety rules)
 
 Log in, create one temporary test student. Set up a Monthly fee plan starting a few months back. Record a partial payment for the oldest period, then a multi-period payment covering the rest plus one period ahead. Confirm: the Fees tab's history table shows the right statuses top to bottom (Paid/Paid/Partial-then-topped-up-to-Paid/etc., whatever the specific sequence produces), the top-level Fees page shows this student with the correct aggregate status, the Dashboard's "This Month Collection" and "Pending Fees" cards now show non-zero real numbers (assuming at least one payment's `paymentDate` falls in the current calendar month), and the receipt page for the multi-period payment shows the correct date range. Clean up all test data (Payment/Receipt rows, FeePlan, Enrollment, then Student, in that order) and confirm the DB is back to 0 students / 0 fee plans / 0 payments / 0 receipts / the original 3 courses / 2 instructors / 3 batches.
 
-- [ ] **Step 3: Update the Phase 1 plan doc's dashboard follow-up note (now confirmed twice, with a concrete fix path)**
+- [x] **Step 3: Update the Phase 1 plan doc's dashboard follow-up note (now confirmed twice, with a concrete fix path)** (also added a second, separate follow-up note for a newly-found `pendingFees` correctness gap — see `docs/superpowers/plans/2026-09-04-phase1-foundation.md`'s "Known follow-ups for later phases" section)
 
 Phase 1's plan doc (`docs/superpowers/plans/2026-09-04-phase1-foundation.md`) already flags that `src/lib/queries/dashboard.ts`'s date-range queries aren't timezone-aware. Task 2 of this phase independently rediscovered the exact same bug class while building `src/lib/fees/periods.ts` (date-fns's `startOfMonth`/`endOfMonth` read local wall-clock time, which silently corrupts a UTC-anchored date boundary) — `dashboard.ts:22` does `startOfMonth(new Date())`/`endOfMonth(new Date())` the same unsafe way, to bound `paymentDate` in its "This Month Collection" query. This phase doesn't fix `dashboard.ts` itself (out of scope, not touched by any task above) — but update the Phase 1 plan doc's follow-up note to point whoever picks this up in Phase 3 at the concrete fix: import `startOfMonth`/`endOfMonth` from `@/lib/fees/periods` (this phase's exported UTC-safe versions) instead of `date-fns`, rather than leaving it to be rediscovered a third time. Also confirm during Step 2's walkthrough that "This Month Collection" looks sane for a payment made "today" in your own testing (it likely will, in a positive-UTC-offset timezone like this project's — the bug is latent, not visibly broken here, which is exactly why it needs the explicit note rather than relying on it surfacing on its own).
 
-- [ ] **Step 4: Final commit**
+- [x] **Step 4: Final commit**
 
 ```bash
 git add -A
