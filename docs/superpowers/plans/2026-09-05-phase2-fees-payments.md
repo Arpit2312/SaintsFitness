@@ -572,7 +572,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 4: Fee history composition + next-unpaid-period helper (TDD)
+## Task 4: Fee history composition + next-unpaid-period helper (TDD) ✅ DONE (commit 72ca178, through two rounds of a real money-correctness fix: 128239c/fee7d02 fixed same-coverageStart order-sensitivity but missed a nested-no-shared-edge case, found in review; d2eaa3a/e7b58e3 generalized the sort to coverageEnd-ascending/coverageStart-descending, verified via 270,000+ randomized adversarial trials against a max-flow ground truth with zero counter-examples; d0b2850/ea10091 promoted that verification into a permanent permutation test and softened a forward reference to Task 7, which doesn't exist yet)
 
 **Files:**
 - Create: `src/lib/fees/fee-history.ts`
