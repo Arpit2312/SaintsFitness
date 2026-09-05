@@ -164,6 +164,73 @@ describe("computeFeeHistory", () => {
       expect(result.periods[2].status).toBe("PAID");
     }
   });
+
+  it("keeps totalPaid identical across differently-ordered permutations of the same overlapping payments (order-independence invariant)", () => {
+    // This is the exact invariant that the two bugs above both violated:
+    // computeFeeHistory sorts its own `payments` argument internally (by
+    // coverageEnd, not by array position or paymentDate), so feeding it the
+    // very same set of payments in a different array order must never change
+    // totalPaid. A fixed, hand-built set of 5 payments over a 6-period plan
+    // (June-Nov), deliberately mixing every overlap shape found adversarial
+    // in review: same coverageStart, same coverageEnd (nested, sharing the
+    // right edge), plain nesting, and two genuinely-crossing pairs where
+    // neither range is a subset of the other.
+    const PERM_TODAY = new Date("2026-11-04"); // periods: Jun, Jul, Aug, Sep, Oct, Nov
+
+    // Same coverageStart as `wide`, and nested inside it.
+    const narrowJune = payment({
+      amount: new Decimal(800),
+      coverageStart: new Date("2026-06-01"),
+      coverageEnd: new Date("2026-06-30"),
+      paymentDate: new Date("2026-06-20"),
+    });
+    // Same coverageEnd as `wide` (nested, sharing the right edge).
+    const narrowJulAug = payment({
+      amount: new Decimal(800),
+      coverageStart: new Date("2026-07-01"),
+      coverageEnd: new Date("2026-08-31"),
+      paymentDate: new Date("2026-07-15"),
+    });
+    // Wide range containing both narrow payments above.
+    const wide = payment({
+      amount: new Decimal(3700),
+      coverageStart: new Date("2026-06-01"),
+      coverageEnd: new Date("2026-08-31"),
+      paymentDate: new Date("2026-06-01"),
+    });
+    // Crosses `wide` (overlaps only at August; neither is a subset of the other).
+    const crossMid = payment({
+      amount: new Decimal(3000),
+      coverageStart: new Date("2026-08-01"),
+      coverageEnd: new Date("2026-10-31"),
+      paymentDate: new Date("2026-08-05"),
+    });
+    // Crosses `crossMid` (overlaps at Sep-Oct; neither is a subset of the other).
+    const crossLate = payment({
+      amount: new Decimal(2500),
+      coverageStart: new Date("2026-09-01"),
+      coverageEnd: new Date("2026-11-30"),
+      paymentDate: new Date("2026-09-10"),
+    });
+
+    const original = [narrowJune, narrowJulAug, wide, crossMid, crossLate];
+    const reversed = [crossLate, crossMid, wide, narrowJulAug, narrowJune];
+    const shuffle1 = [wide, crossLate, narrowJune, crossMid, narrowJulAug];
+    const shuffle2 = [crossMid, narrowJulAug, crossLate, wide, narrowJune];
+
+    const totals = [original, reversed, shuffle1, shuffle2].map(
+      (ordering) => computeFeeHistory(PLAN_START, "MONTHLY", new Decimal(1500), ordering, PERM_TODAY).totalPaid
+    );
+
+    // Every ordering of the identical set of payments must land on the same
+    // totalPaid -- 9000, all six periods (6 x 1500) fully paid. If a future
+    // refactor drops the internal sort (or keys it off paymentDate / array
+    // position instead of coverageEnd), some of these orderings would
+    // silently lose money and this assertion would catch it.
+    for (const total of totals) {
+      expect(total.toString()).toBe("9000");
+    }
+  });
 });
 
 describe("getCoverageStartForNewPayment", () => {

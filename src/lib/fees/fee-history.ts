@@ -29,16 +29,25 @@ export type PaymentForAllocation = {
 /**
  * Scoping note on the allocation order below: it is proven correct (money-
  * conserving and order-independent) for nested ranges and for ranges that
- * share a coverageStart or coverageEnd -- which is all that this app's own
- * `createPayment` action (Task 7) can ever produce, since it always derives
- * a new payment's coverageStart from `getCoverageStartForNewPayment` below
- * rather than letting an admin type in an arbitrary range. It also happens
- * to handle genuinely crossing ranges (e.g. one payment covering Jun-Aug and
- * another covering Jul-Sep, neither a subset of the other) correctly in every
- * scenario tested, but that has NOT been formally proven optimal for
- * arbitrary adversarial crossing-range configurations in general -- doing so
- * would require a max-flow-style allocation algorithm, which isn't warranted
- * given the bounded way payments are actually created in this app.
+ * share a coverageStart or coverageEnd -- which is all that this app's
+ * `createPayment` action is *planned* to ever produce, per Task 7's current
+ * design (Task 7 is not yet implemented as of this writing -- it exists only
+ * as a draft in the Phase 2 plan doc). That plan has payments always derive
+ * their coverageStart from `getCoverageStartForNewPayment` below rather than
+ * letting an admin type in an arbitrary range, which is what bounds the
+ * ranges to nested/same-start/same-end in the first place. Since this
+ * project's own history shows plan drafts sometimes change during actual
+ * implementation, treat that bound as provisional: once Task 7 actually
+ * lands, revisit this comment to confirm the real implementation still only
+ * ever produces ranges of those shapes -- if it doesn't, the scoping claim
+ * below needs to be re-derived against whatever it actually does. It also
+ * happens to handle genuinely crossing ranges (e.g. one payment covering
+ * Jun-Aug and another covering Jul-Sep, neither a subset of the other)
+ * correctly in every scenario tested, but that has NOT been formally proven
+ * optimal for arbitrary adversarial crossing-range configurations in general
+ * -- doing so would require a max-flow-style allocation algorithm, which
+ * isn't warranted given the bounded way payments are actually created in
+ * this app.
  */
 export function computeFeeHistory(
   planStartDate: Date,
