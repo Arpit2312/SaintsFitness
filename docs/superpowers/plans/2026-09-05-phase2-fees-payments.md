@@ -2405,7 +2405,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 13: Final verification and wrap-up
+## Task 13: Final verification and wrap-up ✅ DONE (this commit -- full regression pass clean: 78/78 vitest, tsc clean, eslint matches Phase 1 baseline with no new errors from this phase's files, `next build` clean with `/fees`+`/students/[id]`+`/receipts/[paymentId]` all present. Step 2's browser click-through was replaced with an equivalent data-layer walkthrough per this session's safety rules -- see the report for the exact numbers verified [monthCollection ₹7,500, all periods PAID, totalPending 0, coverageStart/End Jun1-Oct31] and for a real gap found along the way: `getDashboardStats()`'s `pendingFees` is `sum(FeePlan.finalAmount)` across ALL plans, not netted against payments made -- it reads as "total monthly fee configured across all students with a plan," not actual outstanding dues, and was ₹1,500 in this test even though the test student's true pending balance was ₹0. Pre-existing from Phase 1's own spec, not touched by any Phase 2 task, so left as-is here -- flagging for whoever picks up Reports (Phase 5) or revisits the Dashboard. All test data cleaned up, DB confirmed back to exactly 1 student (ST-00043)/0 FeePlans/0 Payments/0 Receipts/3 Courses/2 Instructors/3 Batches/1 User. A full logged-in browser click-through was NOT performed -- entering the seeded admin's password into a login form is off-limits under this session's rules -- and remains open for the user to do themselves before merging if they want final visual confirmation.)
 
 **Files:** none (verification only)
 
