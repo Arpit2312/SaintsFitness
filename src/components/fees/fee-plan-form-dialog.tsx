@@ -89,8 +89,13 @@ export function FeePlanFormDialog({
     if (open) reset(defaultsFor(plan));
   }, [open, plan, reset]);
 
-  const totalAmount = watch("totalAmount") || 0;
-  const discount = watch("discount") || 0;
+  // watch() returns the raw (unregistered-as-number) DOM input value until
+  // submit-time zod coercion runs, so this can be a string -- Number(...)
+  // makes the conversion explicit rather than relying on `-`'s implicit
+  // string coercion (which happens to floor out safely via Math.max below,
+  // but only by accident).
+  const totalAmount = Number(watch("totalAmount")) || 0;
+  const discount = Number(watch("discount")) || 0;
   const finalAmount = Math.max(totalAmount - discount, 0);
 
   async function onSubmit(data: FeePlanInput) {
