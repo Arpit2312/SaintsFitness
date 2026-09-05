@@ -4,7 +4,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
-import { startOfDay, endOfDay } from "date-fns";
+import { startOfDay, endOfDay, startOfMonth, endOfMonth } from "date-fns";
 
 export async function getDashboardStats() {
   const [totalStudents, activeStudents, todaysBatchCount] = await Promise.all([
@@ -19,7 +19,7 @@ export async function getDashboardStats() {
     prisma.payment.aggregate({
       _sum: { amount: true },
       where: {
-        paymentDate: { gte: startOfDay(new Date()), lte: endOfDay(new Date()) },
+        paymentDate: { gte: startOfMonth(new Date()), lte: endOfMonth(new Date()) },
       },
     }),
     prisma.feePlan.aggregate({ _sum: { finalAmount: true } }),
