@@ -3,6 +3,8 @@ import { getStudent } from "@/lib/queries/students";
 import { StudentHeader } from "@/components/students/student-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
+import { getStudentFeeHistory } from "@/lib/queries/fees";
+import { StudentFeesTab } from "@/components/students/student-fees-tab";
 
 function ComingSoon({ label }: { label: string }) {
   return (
@@ -18,10 +20,37 @@ export default async function StudentProfilePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const student = await getStudent(id);
+  const [student, feeHistory] = await Promise.all([getStudent(id), getStudentFeeHistory(id)]);
   if (!student) notFound();
 
   const enrollment = student.enrollments[0];
+
+  // React Server Components refuse to pass Prisma Decimal instances to a
+  // "use client" component ("Only plain objects can be passed to Client
+  // Components from Server Components. Decimal objects are not supported."),
+  // so feeHistory's Decimal fields (plan.totalAmount/discount/finalAmount,
+  // each period's amountDue/amountPaid, totalPaid, totalPending) are
+  // converted to plain numbers here, right at the boundary, before
+  // StudentFeesTab ever receives them.
+  const feeHistoryForClient = feeHistory
+    ? {
+        plan: {
+          totalAmount: feeHistory.plan.totalAmount.toNumber(),
+          frequency: feeHistory.plan.frequency,
+          dueDate: feeHistory.plan.dueDate,
+          discount: feeHistory.plan.discount.toNumber(),
+          finalAmount: feeHistory.plan.finalAmount.toNumber(),
+        },
+        periods: feeHistory.periods.map((period) => ({
+          ...period,
+          amountDue: period.amountDue.toNumber(),
+          amountPaid: period.amountPaid.toNumber(),
+        })),
+        totalPaid: feeHistory.totalPaid.toNumber(),
+        totalPending: feeHistory.totalPending.toNumber(),
+        nextCoverageStart: feeHistory.nextCoverageStart,
+      }
+    : null;
 
   return (
     <div className="space-y-6">
@@ -92,7 +121,7 @@ export default async function StudentProfilePage({
         </TabsContent>
 
         <TabsContent value="fees">
-          <ComingSoon label="Fee" />
+          <StudentFeesTab studentId={student.id} feeHistory={feeHistoryForClient} />
         </TabsContent>
 
         <TabsContent value="attendance">
