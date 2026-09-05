@@ -154,7 +154,7 @@ model Student {
   emergencyContact EmergencyContact?
   parentDetails    ParentDetails?
   enrollments      Enrollment[]
-  feePlans         FeePlan[]
+  feePlan          FeePlan?
   payments         Payment[]
   attendance       Attendance[]
   notes            InstructorNote[]
@@ -205,10 +205,13 @@ model Enrollment {
 
 model FeePlan {
   id          String       @id @default(cuid())
-  studentId   String
+  studentId   String       @unique
   student     Student      @relation(fields: [studentId], references: [id])
   totalAmount Decimal      @db.Decimal(10, 2)
   frequency   FeeFrequency
+  /// The plan's start/anchor date -- periods are enumerated forward from
+  /// here based on `frequency`, not a single one-off due date. Named
+  /// `dueDate` for historical reasons (Phase 1's original schema).
   dueDate     DateTime
   discount    Decimal      @default(0) @db.Decimal(10, 2)
   finalAmount Decimal      @db.Decimal(10, 2)
@@ -217,18 +220,19 @@ model FeePlan {
 }
 
 model Payment {
-  id          String      @id @default(cuid())
-  studentId   String
-  student     Student     @relation(fields: [studentId], references: [id])
-  feePlanId   String?
-  feePlan     FeePlan?    @relation(fields: [feePlanId], references: [id])
-  amount      Decimal     @db.Decimal(10, 2)
-  paymentDate DateTime
-  mode        PaymentMode
-  period      String
-  notes       String?
-  createdAt   DateTime    @default(now())
-  receipt     Receipt?
+  id            String      @id @default(cuid())
+  studentId     String
+  student       Student     @relation(fields: [studentId], references: [id])
+  feePlanId     String?
+  feePlan       FeePlan?    @relation(fields: [feePlanId], references: [id])
+  amount        Decimal     @db.Decimal(10, 2)
+  paymentDate   DateTime
+  mode          PaymentMode
+  coverageStart DateTime
+  coverageEnd   DateTime
+  notes         String?
+  createdAt     DateTime    @default(now())
+  receipt       Receipt?
 }
 
 model Receipt {
