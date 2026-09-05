@@ -155,21 +155,29 @@
   }
 }
 
-body {
-  background-color: var(--color-background);
-  color: var(--color-foreground);
-  font-family: var(--font-sans);
-}
+/* Wrapped in the same `base` layer Tailwind declares (theme < base <
+   components < utilities) so print: (and any other) utility variants can
+   actually override these -- unlayered CSS always beats layered CSS
+   regardless of specificity/source order, which silently defeated
+   receipts/[paymentId]/page.tsx's print:bg-white/print:border-none on
+   .glass-card before this was layered. */
+@layer base {
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+  }
 
-.glass-card {
-  background: var(--color-card);
-  border: 1px solid var(--color-card-border);
-  backdrop-filter: blur(12px);
-  border-radius: 1rem;
-}
+  .glass-card {
+    background: var(--color-card);
+    border: 1px solid var(--color-card-border);
+    backdrop-filter: blur(12px);
+    border-radius: 1rem;
+  }
 
-.gold-divider {
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--color-gold), transparent);
-  opacity: 0.4;
+  .gold-divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--color-gold), transparent);
+    opacity: 0.4;
+  }
 }
