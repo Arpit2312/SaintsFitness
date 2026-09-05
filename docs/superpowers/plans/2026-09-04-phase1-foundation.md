@@ -3970,7 +3970,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ## Task 22: End-to-end smoke test
 
-**Files:**
+**IMPORTANT — this test runs against the real Neon database (no test-DB isolation exists in Phase 1), and the snippet below never cleans up the student it creates.** Re-running the test (locally, or in CI later) would create a new permanent "Test Student E2E" row every time, forever polluting the real academy data with no way to tell them apart (same name/mobile every run — the plan's literal test text doesn't vary it). Setting up full test-database isolation is out of scope for a smoke test task, but the test MUST clean up after itself. Add a `test.afterEach` (or code at the end of the test body) that deletes the created student via Prisma directly (import `PrismaClient` in the spec file, or add a small teardown helper) — following the same pattern already established elsewhere in this project for test cleanup: delete the student's `Enrollment` row(s) first (doesn't cascade), then the `Student` (Address/EmergencyContact/ParentDetails cascade automatically). Confirm the DB is back to its pre-test state after every test run, not just the first one.
 - Create: `playwright.config.ts`
 - Create: `tests/e2e/student-flow.spec.ts`
 
