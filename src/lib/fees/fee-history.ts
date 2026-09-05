@@ -134,6 +134,34 @@ export function computeFeeHistory(
 }
 
 /**
+ * Where a new payment should start covering from, given periods already
+ * computed by `computeFeeHistory`: the first period that isn't fully PAID
+ * yet, or -- if every enumerated period is fully paid -- one period past the
+ * last enumerated period (paying ahead of schedule).
+ *
+ * Split out from `getCoverageStartForNewPayment` so callers that already
+ * have `periods` from a `computeFeeHistory` call (e.g.
+ * `getStudentFeeHistory`) don't have to pay for a second, redundant
+ * sort + waterfall-allocation pass just to get this.
+ */
+export function nextCoverageStartFromPeriods(
+  periods: PeriodWithStatus[],
+  planStartDate: Date,
+  frequency: FeeFrequency
+): Date {
+  const firstUnpaid = periods.find((p) => p.status !== "PAID");
+  if (firstUnpaid) return firstUnpaid.start;
+
+  if (periods.length === 0) {
+    return frequency === "CUSTOM" ? planStartDate : startOfMonth(planStartDate);
+  }
+
+  const last = periods[periods.length - 1];
+  if (frequency === "CUSTOM") return last.start; // one-time fee, already paid -- no further periods
+  return advancePeriodStart(last.start, frequency);
+}
+
+/**
  * Where a new payment should start covering from: the first period that
  * isn't fully PAID yet, or -- if every enumerated period is fully paid --
  * one period past the last enumerated period (paying ahead of schedule).
@@ -146,15 +174,5 @@ export function getCoverageStartForNewPayment(
   today: Date
 ): Date {
   const { periods } = computeFeeHistory(planStartDate, frequency, amountPerPeriod, payments, today);
-
-  const firstUnpaid = periods.find((p) => p.status !== "PAID");
-  if (firstUnpaid) return firstUnpaid.start;
-
-  if (periods.length === 0) {
-    return frequency === "CUSTOM" ? planStartDate : startOfMonth(planStartDate);
-  }
-
-  const last = periods[periods.length - 1];
-  if (frequency === "CUSTOM") return last.start; // one-time fee, already paid -- no further periods
-  return advancePeriodStart(last.start, frequency);
+  return nextCoverageStartFromPeriods(periods, planStartDate, frequency);
 }

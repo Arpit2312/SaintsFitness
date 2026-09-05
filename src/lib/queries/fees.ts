@@ -6,11 +6,11 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
-import { computeFeeHistory, getCoverageStartForNewPayment } from "@/lib/fees/fee-history";
+import { computeFeeHistory, nextCoverageStartFromPeriods } from "@/lib/fees/fee-history";
 
 export async function getStudentFeeHistory(studentId: string) {
   const plan = await prisma.feePlan.findUnique({
-    where: { studentId },
+    where: { studentId, student: { deletedAt: null } },
     include: { payments: true },
   });
   if (!plan) return null;
@@ -23,19 +23,13 @@ export async function getStudentFeeHistory(studentId: string) {
     plan.payments,
     today
   );
-  const nextCoverageStart = getCoverageStartForNewPayment(
-    plan.dueDate,
-    plan.frequency,
-    plan.finalAmount,
-    plan.payments,
-    today
-  );
+  const nextCoverageStart = nextCoverageStartFromPeriods(periods, plan.dueDate, plan.frequency);
 
   return { plan, periods, totalPaid, totalPending, nextCoverageStart };
 }
 
 export async function getFeePlan(studentId: string) {
-  return prisma.feePlan.findUnique({ where: { studentId } });
+  return prisma.feePlan.findUnique({ where: { studentId, student: { deletedAt: null } } });
 }
 
 export async function listStudentFeeStatuses() {
@@ -70,7 +64,7 @@ export async function listStudentFeeStatuses() {
       studentCode: student.studentCode,
       name: student.name,
       hasPlan: true as const,
-      status: currentPeriod?.status ?? ("DUE" as const),
+      status: currentPeriod?.status ?? ("NOT_STARTED" as const),
       totalPending,
     };
   });
