@@ -17,9 +17,19 @@ import { Decimal } from "@prisma/client/runtime/library";
  * Invariant: `date` must already be a start-of-month date. Unlike date-fns's
  * real `addMonths`, this does not clamp day-of-month overflow to the last day
  * of the target month -- it's only exercised here against day-1 inputs, so
- * that clamping behavior was never needed.
+ * that clamping behavior was never needed. Enforced at runtime (see below)
+ * since this function is a public export: every current call path already
+ * floors its input via `startOfMonth` first (e.g. `enumeratePeriods`'s
+ * `planStartDate`, however the admin entered it, is floored before it ever
+ * reaches here), so this guard should never fire for legitimate usage --
+ * it exists to catch a future caller that bypasses that flooring.
  */
 export function addMonths(date: Date, months: number): Date {
+  if (date.getUTCDate() !== 1) {
+    throw new Error(
+      `addMonths expects a start-of-month date, got ${date.toISOString()} -- call startOfMonth() first`
+    );
+  }
   const d = new Date(date.getTime());
   d.setUTCMonth(d.getUTCMonth() + months);
   return d;

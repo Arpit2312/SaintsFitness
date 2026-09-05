@@ -138,6 +138,10 @@ describe("exported UTC-safe month helpers", () => {
   it("addMonths is exported and usable directly", () => {
     expect(addMonths(new Date("2026-06-01"), 2).toISOString().slice(0, 10)).toBe("2026-08-01");
   });
+
+  it("addMonths rejects a non-start-of-month date, since it doesn't clamp day-of-month overflow", () => {
+    expect(() => addMonths(new Date("2026-06-15"), 1)).toThrow(/start-of-month/);
+  });
 });
 
 describe("formatMonthYear", () => {
