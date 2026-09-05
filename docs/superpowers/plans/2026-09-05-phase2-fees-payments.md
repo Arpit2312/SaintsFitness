@@ -945,6 +945,8 @@ export function getCoverageStartForNewPayment(
 }
 ```
 
+**Post-Task-6 update:** the body above (from `const firstUnpaid = ...` through the end) was extracted into a separately-exported `nextCoverageStartFromPeriods(periods, planStartDate, frequency)` when Task 6's review found `getStudentFeeHistory` was triggering a redundant second `computeFeeHistory` pass by calling this function. `getCoverageStartForNewPayment` now just calls `computeFeeHistory` once and delegates to that extracted function -- same behavior, existing tests below unchanged. See Task 6 for the final code.
+
 - [ ] **Step 4: Run the tests to verify they pass**
 
 ```bash
@@ -1082,12 +1084,13 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 6: Fee queries (server-only reads)
+## Task 6: Fee queries (server-only reads) ✅ DONE (commit b727f69, fixed in 67be50c -- review flagged missing soft-delete scoping on student-keyed lookups, a redundant double `computeFeeHistory` pass in `getStudentFeeHistory`, and a future-dated plan being mislabeled `"DUE"` instead of a distinct `"NOT_STARTED"`)
 
 **Files:**
 - Create: `src/lib/queries/fees.ts`
+- Also touched (fix): `src/lib/fees/fee-history.ts` -- extracted `nextCoverageStartFromPeriods` so `getStudentFeeHistory` can reuse an already-computed `periods` array instead of triggering a second full `computeFeeHistory` pass via `getCoverageStartForNewPayment`
 
-- [ ] **Step 1: Write `src/lib/queries/fees.ts`**
+- [x] **Step 1: Write `src/lib/queries/fees.ts`**
 
 ```ts
 // Read-only queries, not mutations -- lives outside src/actions/ (which is
@@ -1098,11 +1101,11 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 import "server-only";
 
 import { prisma } from "@/lib/db";
-import { computeFeeHistory, getCoverageStartForNewPayment } from "@/lib/fees/fee-history";
+import { computeFeeHistory, nextCoverageStartFromPeriods } from "@/lib/fees/fee-history";
 
 export async function getStudentFeeHistory(studentId: string) {
   const plan = await prisma.feePlan.findUnique({
-    where: { studentId },
+    where: { studentId, student: { deletedAt: null } },
     include: { payments: true },
   });
   if (!plan) return null;
@@ -1115,19 +1118,13 @@ export async function getStudentFeeHistory(studentId: string) {
     plan.payments,
     today
   );
-  const nextCoverageStart = getCoverageStartForNewPayment(
-    plan.dueDate,
-    plan.frequency,
-    plan.finalAmount,
-    plan.payments,
-    today
-  );
+  const nextCoverageStart = nextCoverageStartFromPeriods(periods, plan.dueDate, plan.frequency);
 
   return { plan, periods, totalPaid, totalPending, nextCoverageStart };
 }
 
 export async function getFeePlan(studentId: string) {
-  return prisma.feePlan.findUnique({ where: { studentId } });
+  return prisma.feePlan.findUnique({ where: { studentId, student: { deletedAt: null } } });
 }
 
 export async function listStudentFeeStatuses() {
@@ -1162,7 +1159,11 @@ export async function listStudentFeeStatuses() {
       studentCode: student.studentCode,
       name: student.name,
       hasPlan: true as const,
-      status: currentPeriod?.status ?? ("DUE" as const),
+      // NOT_STARTED (not the shared PeriodStatus union) when a plan's start
+      // date is still in the future and enumeratePeriods yields no periods
+      // yet -- distinct from DUE so a not-yet-started plan doesn't read as
+      // "payment owed".
+      status: currentPeriod?.status ?? ("NOT_STARTED" as const),
       totalPending,
     };
   });
@@ -1176,7 +1177,9 @@ export async function getPayment(paymentId: string) {
 }
 ```
 
-- [ ] **Step 2: Verify it compiles**
+`getCoverageStartForNewPayment` in `src/lib/fees/fee-history.ts` was refactored (behavior-preserving, existing tests unchanged) to delegate to the new exported `nextCoverageStartFromPeriods(periods, planStartDate, frequency)`, so callers that already have `periods` from a `computeFeeHistory` call don't pay for a second sort + waterfall-allocation pass.
+
+- [x] **Step 2: Verify it compiles**
 
 ```bash
 npx tsc --noEmit
@@ -1184,7 +1187,7 @@ npx tsc --noEmit
 
 Expected: clean.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add -A
