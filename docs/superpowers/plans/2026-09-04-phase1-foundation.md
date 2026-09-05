@@ -3380,7 +3380,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 19: Student profile page (6 tabs)
+## Task 19: Student profile page (6 tabs) ✅ DONE (commit ff0b9f1, enrollment ordering hardened in d728169 — schema technically allows >1 enrollment per student even though every write path converges to at most one; dismissal-guard on delete rigorously re-tested with an artificial delay)
 
 **Files:**
 - Create: `src/app/(app)/students/[id]/page.tsx`
