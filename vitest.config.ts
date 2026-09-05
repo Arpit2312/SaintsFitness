@@ -9,5 +9,10 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    // tests/e2e holds Playwright specs (run via `playwright test`, not
+    // vitest) -- Playwright's test.afterEach/test() throw when collected by
+    // vitest's own runner, so exclude that directory explicitly alongside
+    // vitest's own defaults.
+    exclude: ["**/node_modules/**", "**/dist/**", "tests/e2e/**"],
   },
 });
