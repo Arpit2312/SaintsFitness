@@ -2217,15 +2217,16 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 12: Digital receipt page
+## Task 12: Digital receipt page ✅ DONE (commit aa9839c, matched the plan byte-for-byte; fixed in 6d9251d -- review found the print styling was silently broken: `.glass-card`/`.gold-divider`/`body` were plain unlayered CSS in `globals.css` while Tailwind's `print:*` utilities live in `@layer utilities`, and per the CSS Cascade Layers spec unlayered rules always beat layered ones regardless of source order, so `print:bg-white`/`print:border-none` never actually applied; fixed by wrapping those three rules in `@layer base`, verified against the actual compiled CSS output [not just reasoning] on both a fresh `next dev` and a `next build` production bundle, and against a live screenshot confirming no visual regression to the normal dark theme; also added the missing `print:text-black` to several label/subtitle spans that lacked it, and retyped `MODE_LABELS` from `Record<string, string>` to the exhaustive `Record<PaymentMode, string>`)
 
 **Files:**
 - Create: `src/app/receipts/[paymentId]/page.tsx`
 - Create: `src/components/fees/receipt-actions.tsx`
+- Also touched (fix): `src/app/globals.css` -- layered `.glass-card`/`.gold-divider`/`body` so `print:` utility variants can override them
 
 Note this route lives OUTSIDE the `(app)` route group (a sibling of `src/app/login/`, not under `src/app/(app)/`) so it renders without the sidebar/header chrome — the receipt must be a clean, printable page on its own, not wrapped in `AppShell`. It does its own auth check directly (same pattern as `src/app/(app)/layout.tsx`, just inlined here since there's no shared layout to put it in).
 
-- [ ] **Step 1: Write `src/components/fees/receipt-actions.tsx`**
+- [x] **Step 1: Write `src/components/fees/receipt-actions.tsx`**
 
 ```tsx
 "use client";
@@ -2264,7 +2265,7 @@ export function ReceiptActions({
 }
 ```
 
-- [ ] **Step 2: Write `src/app/receipts/[paymentId]/page.tsx`**
+- [x] **Step 2: Write `src/app/receipts/[paymentId]/page.tsx`**
 
 ```tsx
 import { headers } from "next/headers";
@@ -2274,8 +2275,9 @@ import { auth } from "@/lib/auth";
 import { getPayment } from "@/lib/queries/fees";
 import { formatMonthYear } from "@/lib/fees/periods";
 import { ReceiptActions } from "@/components/fees/receipt-actions";
+import type { PaymentMode } from "@prisma/client";
 
-const MODE_LABELS: Record<string, string> = {
+const MODE_LABELS: Record<PaymentMode, string> = {
   CASH: "Cash",
   UPI: "UPI",
   ONLINE: "Online Payment",
@@ -2314,39 +2316,39 @@ export default async function ReceiptPage({
       <div className="glass-card w-full max-w-md space-y-6 p-8 print:border-none print:bg-white print:text-black">
         <div className="text-center">
           <p className="text-lg font-semibold text-gold print:text-black">SAINTS</p>
-          <p className="text-sm text-muted">Dance • Zumba • Movement • Self Knowledge</p>
+          <p className="text-sm text-muted print:text-black">Dance • Zumba • Movement • Self Knowledge</p>
           <div className="gold-divider my-3" />
           <p className="font-medium text-foreground print:text-black">FEE RECEIPT</p>
         </div>
 
         <div className="space-y-2 text-sm">
           <div className="flex justify-between">
-            <span className="text-muted">Student</span>
+            <span className="text-muted print:text-black">Student</span>
             <span className="text-foreground print:text-black">{payment.student.name}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-muted">Receipt No</span>
+            <span className="text-muted print:text-black">Receipt No</span>
             <span className="text-foreground print:text-black">{payment.receipt.receiptNumber}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-muted">Amount</span>
+            <span className="text-muted print:text-black">Amount</span>
             <span className="text-foreground print:text-black">₹{amountLabel}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-muted">For</span>
+            <span className="text-muted print:text-black">For</span>
             <span className="text-foreground print:text-black">{periodLabel}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-muted">Payment Mode</span>
+            <span className="text-muted print:text-black">Payment Mode</span>
             <span className="text-foreground print:text-black">{MODE_LABELS[payment.mode]}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-muted">Date</span>
+            <span className="text-muted print:text-black">Date</span>
             <span className="text-foreground print:text-black">{format(payment.paymentDate, "dd MMM yyyy")}</span>
           </div>
         </div>
 
-        <p className="text-center text-sm text-muted">Thank You</p>
+        <p className="text-center text-sm text-muted print:text-black">Thank You</p>
 
         <ReceiptActions studentMobile={payment.student.mobile} shareMessage={shareMessage} />
       </div>
@@ -2355,7 +2357,34 @@ export default async function ReceiptPage({
 }
 ```
 
-- [ ] **Step 3: Verify manually**
+**Post-review fix (`src/app/globals.css`):** `.glass-card`/`.gold-divider`/`body` were plain unlayered CSS, which always beats Tailwind's `@layer utilities` (where `print:*` variants live) per the CSS Cascade Layers spec, regardless of source order -- so this page's `print:bg-white`/`print:border-none` silently never applied. Fixed by wrapping those three rules in `@layer base`:
+
+```css
+@layer base {
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+  }
+
+  .glass-card {
+    background: var(--color-card);
+    border: 1px solid var(--color-card-border);
+    backdrop-filter: blur(12px);
+    border-radius: 1rem;
+  }
+
+  .gold-divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--color-gold), transparent);
+    opacity: 0.4;
+  }
+}
+```
+
+Verified via the actual compiled CSS output (not just reasoning) on a clean `next dev` rebuild and a `next build` production bundle that `.glass-card` now lands inside `@layer base`, which precedes `@layer utilities` in declaration order -- and via a live screenshot of the public `/login` page (which also uses `.glass-card`) that the normal dark-theme rendering is visually unchanged. Confirmed via grep that `.glass-card` is combined with a conflicting `bg-`/`border-` utility class only on this receipt page, so no other component's appearance could have been affected.
+
+- [x] **Step 3: Verify manually**
 
 ```bash
 npm run dev
@@ -2363,7 +2392,9 @@ npm run dev
 
 Log in, create a temporary test student with a fee plan and a payment (via the UI, as in Task 10), then navigate directly to `/receipts/<paymentId>` (get the payment id from a read-only DB query, or add a temporary "View Receipt" link on the fee history table row to click through — either is fine for this manual check; a real "View Receipt" link is optional polish, not required by this task). Confirm the receipt renders correctly with all fields, confirm clicking "Print / Download PDF" opens the browser's print dialog, confirm "Share via WhatsApp" opens a new tab to a `wa.me` URL with the correct pre-filled message (you don't need an actual WhatsApp account to verify this — just confirm the URL and query param look right). Clean up all test data afterward. Stop the server.
 
-- [ ] **Step 4: Commit**
+**Result:** Browser login was not attempted (entering the seeded admin's password is a prohibited action under this session's safety rules). Verified instead via a data-layer script exercising the real `getPayment` query and replicating this page's exact computation logic for both a multi-period and a single-period payment (correct `periodLabel`, `amountLabel`, mode label, formatted date each time), a decoded round-trip check of the WhatsApp share URL/message (₹, en-dash, and line breaks survive `encodeURIComponent`/`decodeURIComponent` correctly), confirmation that `getPayment` returns `null` for a nonexistent id (exercising the `notFound()` path), and a genuine, non-data-layer check of the auth guard: an unauthenticated `curl` request to `/receipts/<id>` returned a real HTTP 307 redirect to `/login`. Cleaned up back to baseline (1 student = ST-00043, 0 plans/payments/receipts).
+
+- [x] **Step 4: Commit**
 
 ```bash
 git add -A
