@@ -26,6 +26,20 @@ export type PaymentForAllocation = {
   coverageEnd: Date;
 };
 
+/**
+ * Scoping note on the allocation order below: it is proven correct (money-
+ * conserving and order-independent) for nested ranges and for ranges that
+ * share a coverageStart or coverageEnd -- which is all that this app's own
+ * `createPayment` action (Task 7) can ever produce, since it always derives
+ * a new payment's coverageStart from `getCoverageStartForNewPayment` below
+ * rather than letting an admin type in an arbitrary range. It also happens
+ * to handle genuinely crossing ranges (e.g. one payment covering Jun-Aug and
+ * another covering Jul-Sep, neither a subset of the other) correctly in every
+ * scenario tested, but that has NOT been formally proven optimal for
+ * arbitrary adversarial crossing-range configurations in general -- doing so
+ * would require a max-flow-style allocation algorithm, which isn't warranted
+ * given the bounded way payments are actually created in this app.
+ */
 export function computeFeeHistory(
   planStartDate: Date,
   frequency: FeeFrequency,
@@ -36,30 +50,50 @@ export function computeFeeHistory(
   const periods = enumeratePeriods(planStartDate, frequency, amountPerPeriod, today);
   const paidPerPeriod = periods.map(() => new Decimal(0));
 
-  // Sort by coverageStart (then range-length ascending, then paymentDate as a
-  // final tiebreak) -- NOT by paymentDate alone. A payment's coverage range
-  // determines which periods it can settle, so processing order must be tied
-  // to which period a payment is fundamentally FOR, not to when it was typed
-  // into the system. Consider a plan with Sep/Oct/Nov each due 1500: a narrow
-  // payment (800, Sep only) and a wide payment (3000, Sep-Nov). If the wide
-  // payment is logged with an earlier paymentDate than the narrow one (e.g.
-  // an admin backdates a delayed cash payment to when it was actually
-  // received, and that backdated date lands earlier than a payment already
-  // logged in the interim), sorting by paymentDate would process the wide
-  // payment first -- it would fully consume Sep/Oct/Nov's dues with its own
-  // 3000, leaving the narrow payment's 800 with nowhere left to go within its
-  // own range, silently dropping it from totalPaid (3000 instead of the
-  // correct 3800). Sorting by coverageStart/range-length first means the
-  // narrow, Sep-only payment always claims Sep before the wider payment can
-  // spill into it, regardless of data-entry order. Do not "simplify" this
-  // back to a plain paymentDate sort.
+  // Sort by coverageEnd ascending (then coverageStart DESCENDING, then
+  // paymentDate as a final tiebreak) -- NOT by paymentDate, and NOT by
+  // coverageStart ascending either. A payment's coverage range determines
+  // which periods it can settle, so processing order must be tied to which
+  // period a payment is fundamentally FOR, not to when it was typed into the
+  // system. The key idea is "least flexibility first": a payment whose
+  // coverage runs out soonest (earliest coverageEnd) has the fewest periods
+  // it could possibly apply to, so it should get first claim on those
+  // periods before a payment with a later coverageEnd -- which has more
+  // remaining periods to potentially spill into -- gets a chance to consume
+  // them. When two payments share the same coverageEnd, the one with the
+  // LATER coverageStart is a strict subset (nested, sharing the right edge)
+  // of the one with the earlier coverageStart, so it is even less flexible
+  // and should still be processed first; hence coverageStart descending as
+  // the secondary key.
+  //
+  // coverageStart ascending (what an earlier fix used) is NOT sufficient: it
+  // fixes the case where two payments share the same coverageStart, but it
+  // does nothing when a wide payment's coverageStart is EARLIER than a
+  // narrower payment nested later inside its range -- the primary sort key
+  // already differs there, so the tiebreakers never engage, and the wide
+  // payment still gets processed first, silently dropping the narrow
+  // payment's money. coverageEnd ascending fixes both cases uniformly.
+  //
+  // Concrete example (originally-reported bug, still fixed by this ordering):
+  // a plan with Sep/Oct/Nov each due 1500, a narrow payment (800, Sep only)
+  // and a wide payment (3000, Sep-Nov). If the wide payment is logged with an
+  // earlier paymentDate than the narrow one (e.g. an admin backdates a
+  // delayed cash payment to when it was actually received, landing earlier
+  // than a payment already logged in the interim), sorting by paymentDate
+  // would process the wide payment first -- it would fully consume
+  // Sep/Oct/Nov's dues with its own 3000, leaving the narrow payment's 800
+  // with nowhere left to go within its own range, silently dropping it from
+  // totalPaid (3000 instead of the correct 3800). Sorting by coverageEnd
+  // means the narrow, Sep-only payment (coverageEnd = end of Sep) always
+  // claims Sep before the wider payment (coverageEnd = end of Nov) can spill
+  // into it, regardless of data-entry order or where each payment's range
+  // starts. Do not "simplify" this back to a plain paymentDate or
+  // coverageStart-ascending sort.
   const sortedPayments = [...payments].sort((a, b) => {
-    const startDiff = a.coverageStart.getTime() - b.coverageStart.getTime();
+    const endDiff = a.coverageEnd.getTime() - b.coverageEnd.getTime();
+    if (endDiff !== 0) return endDiff;
+    const startDiff = b.coverageStart.getTime() - a.coverageStart.getTime(); // descending
     if (startDiff !== 0) return startDiff;
-    const aLength = a.coverageEnd.getTime() - a.coverageStart.getTime();
-    const bLength = b.coverageEnd.getTime() - b.coverageStart.getTime();
-    const lengthDiff = aLength - bLength;
-    if (lengthDiff !== 0) return lengthDiff;
     return a.paymentDate.getTime() - b.paymentDate.getTime();
   });
   for (const pay of sortedPayments) {

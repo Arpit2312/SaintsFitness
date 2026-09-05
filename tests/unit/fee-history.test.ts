@@ -110,6 +110,60 @@ describe("computeFeeHistory", () => {
     expect(resultA.totalPaid.toString()).toBe(expectedTotalPaid);
     expect(resultB.totalPaid.toString()).toBe(expectedTotalPaid);
   });
+
+  it("doesn't lose money when a narrow payment is nested inside a wide payment's range that starts earlier (coverageStart-ascending is not enough)", () => {
+    // June-August, wide -- coverageStart is EARLIER than the narrow payment's,
+    // so a coverageStart-ascending sort would still process this one first.
+    // Sized (3700) so that together with the narrow payment's 800 it exactly
+    // fills June+July+August's combined due (4500), leaving no overpayment
+    // residue to muddy the order-independence check.
+    const widePayment = payment({
+      amount: new Decimal(3700),
+      coverageStart: new Date("2026-06-01"),
+      coverageEnd: new Date("2026-08-31"),
+    });
+    // July only, nested inside the wide payment's range starting at the
+    // SECOND period (not the first) -- this is the newly-found adversarial
+    // case: coverageEnd (end of July) is earlier than the wide payment's
+    // (end of August), so it must still be processed first despite its
+    // coverageStart being later.
+    const narrowPayment = payment({
+      amount: new Decimal(800),
+      coverageStart: new Date("2026-07-01"),
+      coverageEnd: new Date("2026-07-31"),
+    });
+    const expectedTotalPaid = "4500"; // 3700 + 800, regardless of ordering
+
+    const wideLoggedFirst = [
+      { ...widePayment, paymentDate: new Date("2026-06-05") },
+      { ...narrowPayment, paymentDate: new Date("2026-07-10") },
+    ];
+    const narrowLoggedFirst = [
+      { ...narrowPayment, paymentDate: new Date("2026-06-05") },
+      { ...widePayment, paymentDate: new Date("2026-07-10") },
+    ];
+
+    const resultA = computeFeeHistory(PLAN_START, "MONTHLY", new Decimal(1500), wideLoggedFirst, TODAY);
+    const resultB = computeFeeHistory(PLAN_START, "MONTHLY", new Decimal(1500), narrowLoggedFirst, TODAY);
+
+    for (const result of [resultA, resultB]) {
+      expect(result.totalPaid.toString()).toBe(expectedTotalPaid);
+      // June: fully paid (1500) out of the wide payment's 3700.
+      expect(result.periods[0].amountPaid.toString()).toBe("1500");
+      expect(result.periods[0].status).toBe("PAID");
+      // July: the narrow payment claims it first (800), then the wide
+      // payment's spillover (700 of its remaining 2200) tops it up to fully
+      // paid (1500) -- if the wide payment had been processed first instead,
+      // it would have consumed July's whole 1500 due itself, leaving nothing
+      // for the narrow payment's 800 to apply to (the bug this test guards
+      // against).
+      expect(result.periods[1].amountPaid.toString()).toBe("1500");
+      expect(result.periods[1].status).toBe("PAID");
+      // August: fully paid (1500) by the wide payment's remaining spillover.
+      expect(result.periods[2].amountPaid.toString()).toBe("1500");
+      expect(result.periods[2].status).toBe("PAID");
+    }
+  });
 });
 
 describe("getCoverageStartForNewPayment", () => {
