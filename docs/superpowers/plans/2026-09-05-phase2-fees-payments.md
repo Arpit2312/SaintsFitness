@@ -1325,12 +1325,12 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 8: Fee Plan form dialog
+## Task 8: Fee Plan form dialog ✅ DONE (commit ad392fc, refined in f295fcf -- `feePlanSchema`'s `discount: .default(0)` makes zod's input/output types diverge, which broke the plan's literal `useForm<FeePlanInput>(...)` under `zodResolver`; fixed with react-hook-form's 3-generic `useForm<TFieldValues, TContext, TTransformedValues>` form instead of dropping the default [a test locks in the default-to-0 behavior]; review separately flagged the derived "Final Payable" preview relying on implicit string-arithmetic coercion from unregistered-as-number inputs, made explicit via `Number(watch(...))` even though the reachable failure case was verified not to actually misbehave)
 
 **Files:**
 - Create: `src/components/fees/fee-plan-form-dialog.tsx`
 
-- [ ] **Step 1: Write `src/components/fees/fee-plan-form-dialog.tsx`**
+- [x] **Step 1: Write `src/components/fees/fee-plan-form-dialog.tsx`**
 
 Follow `src/components/classes/course-form-dialog.tsx`'s exact pattern (`useGuardedDialogOpenChange`, `showCloseButton={!submitting}`, `useEffect`+`reset()` re-seed, `onSuccess` callback, fields `disabled={submitting}`):
 
@@ -1340,6 +1340,7 @@ Follow `src/components/classes/course-form-dialog.tsx`'s exact pattern (`useGuar
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import type { z } from "zod";
 import { feePlanSchema, type FeePlanInput } from "@/lib/validations/fee-plan";
 import { saveFeePlan } from "@/actions/fees";
 import { Button } from "@/components/ui/button";
@@ -1362,6 +1363,19 @@ type ExistingFeePlan = {
   dueDate: Date;
   discount: number;
 };
+
+// feePlanSchema's `discount` has a schema-level `.default(0)` (kept because
+// tests/unit/fee-plan-validation.test.ts locks in that behavior for
+// safeParse callers), which makes discount optional on zod's *input* type
+// but required on its *output* type (FeePlanInput = z.infer, the output).
+// zodResolver's Resolver is typed against the input side, so
+// useForm<FeePlanInput> alone doesn't type-check (student.ts's dob/joiningDate
+// comment covers the same class of bug, solved there by dropping the
+// schema-level default -- not an option here since a test depends on it).
+// react-hook-form's 3-generic useForm<TFieldValues, TContext, TTransformedValues>
+// exists for exactly this: form fields are typed against the input shape,
+// while handleSubmit's callback still receives the resolved output shape.
+type FeePlanFormValues = z.input<typeof feePlanSchema>;
 
 function defaultsFor(plan?: ExistingFeePlan): FeePlanInput {
   return plan
@@ -1403,7 +1417,7 @@ export function FeePlanFormDialog({
     watch,
     reset,
     formState: { errors },
-  } = useForm<FeePlanInput>({
+  } = useForm<FeePlanFormValues, unknown, FeePlanInput>({
     resolver: zodResolver(feePlanSchema),
     defaultValues: defaultsFor(plan),
   });
@@ -1412,8 +1426,13 @@ export function FeePlanFormDialog({
     if (open) reset(defaultsFor(plan));
   }, [open, plan, reset]);
 
-  const totalAmount = watch("totalAmount") || 0;
-  const discount = watch("discount") || 0;
+  // watch() returns the raw (unregistered-as-number) DOM input value until
+  // submit-time zod coercion runs, so this can be a string -- Number(...)
+  // makes the conversion explicit rather than relying on `-`'s implicit
+  // string coercion (which happens to floor out safely via Math.max below,
+  // but only by accident).
+  const totalAmount = Number(watch("totalAmount")) || 0;
+  const discount = Number(watch("discount")) || 0;
   const finalAmount = Math.max(totalAmount - discount, 0);
 
   async function onSubmit(data: FeePlanInput) {
@@ -1493,7 +1512,7 @@ export function FeePlanFormDialog({
 }
 ```
 
-- [ ] **Step 2: Verify it compiles**
+- [x] **Step 2: Verify it compiles**
 
 ```bash
 npx tsc --noEmit
@@ -1501,7 +1520,7 @@ npx tsc --noEmit
 
 Expected: clean (this component isn't wired into any page yet — Task 10 does that — so there's nothing to click through yet, just confirm no type errors).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add -A
