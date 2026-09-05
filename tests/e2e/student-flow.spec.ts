@@ -14,17 +14,17 @@ const TEST_MOBILE = "9876543211";
 const TEST_NAME = "Test Student E2E";
 
 async function deleteTestStudent() {
-  const student = await prisma.student.findFirst({ where: { mobile: TEST_MOBILE } });
+  // Match on BOTH mobile and name, not mobile alone: mobile isn't a unique
+  // column, and TEST_MOBILE is a syntactically valid Indian mobile number a
+  // real student could legitimately hold. Filtering by the compound pair
+  // (rather than finding-by-mobile then asserting the name separately)
+  // means a real student sharing the mobile is never matched at all -- an
+  // assert-after-find approach would still have to pick *some* row from a
+  // non-deterministic findFirst if two rows matched on mobile alone.
+  const student = await prisma.student.findFirst({
+    where: { mobile: TEST_MOBILE, name: TEST_NAME },
+  });
   if (!student) return;
-  // Guard against ever deleting a real student who happens to share this
-  // mobile number (unlikely but not impossible -- it's a syntactically
-  // valid Indian mobile number) by also requiring the exact test name
-  // before deleting anything.
-  if (student.name !== TEST_NAME) {
-    throw new Error(
-      `Refusing to delete student ${student.id}: mobile ${TEST_MOBILE} matched but name "${student.name}" !== "${TEST_NAME}"`
-    );
-  }
   // Enrollment doesn't cascade on Student delete (no onDelete: Cascade in
   // schema.prisma), so it must be removed first. Address/EmergencyContact/
   // ParentDetails all do cascade and need no explicit cleanup.
@@ -49,7 +49,7 @@ test("admin can log in, add a student, and see it in the list", async ({ page })
   await expect(page).toHaveURL(/\/dashboard/);
 
   await page.goto("/students/new");
-  await page.getByLabel("Student Name").fill("Test Student E2E");
+  await page.getByLabel("Student Name").fill(TEST_NAME);
   await page.getByLabel("Mobile Number", { exact: true }).first().fill(TEST_MOBILE);
   await page.getByLabel("Date of Birth").fill("2000-01-01");
   await page.getByLabel("Joining Date").fill("2026-01-01");
@@ -69,5 +69,5 @@ test("admin can log in, add a student, and see it in the list", async ({ page })
   await page.getByRole("button", { name: "Add Student" }).click();
 
   await expect(page).toHaveURL(/\/students$/);
-  await expect(page.getByText("Test Student E2E")).toBeVisible();
+  await expect(page.getByText(TEST_NAME)).toBeVisible();
 });
