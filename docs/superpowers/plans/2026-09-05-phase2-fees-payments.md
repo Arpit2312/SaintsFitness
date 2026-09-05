@@ -142,7 +142,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 2: Period enumeration + status calculation (TDD) ✅ DONE (commit 783006b, extended with exported UTC helpers + formatMonthYear in 912a506 — date-fns's addMonths/startOfMonth/endOfMonth operate in local time and silently corrupted month-boundary math against UTC-anchored dates in this IST environment; the code block below is the corrected, actually-committed version, not the original draft)
+## Task 2: Period enumeration + status calculation (TDD) ✅ DONE (commit 783006b, extended with exported UTC helpers + formatMonthYear in 912a506, a runtime day-1 guard on addMonths in b4417df — date-fns's addMonths/startOfMonth/endOfMonth operate in local time and silently corrupted month-boundary math against UTC-anchored dates in this IST environment; the code block below is the corrected, actually-committed version, not the original draft. This same UTC-safety fix must be reused, not reimported from date-fns, by Task 4 and by Phase 3's fix to dashboard.ts.)
 
 **Files:**
 - Create: `src/lib/fees/periods.ts`
