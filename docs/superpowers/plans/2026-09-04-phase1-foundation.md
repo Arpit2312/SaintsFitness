@@ -3076,7 +3076,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 18: Student new/edit form page
+## Task 18: Student new/edit form page ✅ DONE (commit a80b160 — found/fixed a date-input formatting bug, register()-bound date fields need to be controlled via watch/setValue like the Selects, or the DOM rejects the raw Date object. Separately, fixed a real gap in Task 15's updateStudent in b848f50/d38356d: it never touched enrollments, so reassigning a student's batch via this form's Batch select silently did nothing — now conditionally deletes+recreates the enrollment when the batch actually changes.)
 
 **DEFERRED — Task 16 (Vercel Blob photo upload) is postponed until a Blob store token is available.** This section has been rewritten to build the student form WITHOUT photo upload for now — no `PhotoUpload` import, no `photoUrl` param passed to `createStudent`/`updateStudent` (they both accept `photoUrl` as optional, so simply omitting it is correct and safe). When Task 16 is eventually done, come back and: (1) add the `<PhotoUpload>` component to the top of the form, (2) add `photoUrl` state wired to it, (3) pass `photoUrl` through to `createStudent(data, photoUrl)`/`updateStudent(existing.id, data, photoUrl)`. Everything else below is otherwise final — already updated for the query/action split and the `SelectValue` label-resolution pattern from Tasks 13/15.
 
