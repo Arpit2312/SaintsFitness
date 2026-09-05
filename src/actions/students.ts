@@ -99,6 +99,12 @@ export async function updateStudent(id: string, input: StudentInput, photoUrl?: 
       address: { upsert: { create: addressData, update: addressData } },
       emergencyContact: { upsert: { create: emergencyContactData, update: emergencyContactData } },
       parentDetails: { upsert: { create: parentDetailsData, update: parentDetailsData } },
+      // deleteMany: {} is deliberately unfiltered (not scoped to the old
+      // batchId) -- Prisma scopes nested relation writes to this student
+      // automatically, and an unfiltered clear also cleans up any stray
+      // extra enrollment rows (a state the UI never creates but the schema
+      // doesn't prevent), guaranteeing exactly one enrollment afterward.
+      // Filtering by the old batchId would leave such stray rows behind.
       ...(batchChanged
         ? { enrollments: { deleteMany: {}, create: { batchId: data.batchId } } }
         : {}),
