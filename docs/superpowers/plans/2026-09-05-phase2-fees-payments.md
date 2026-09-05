@@ -463,7 +463,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 3: Waterfall payment allocation (TDD)
+## Task 3: Waterfall payment allocation (TDD) ✅ DONE (commit 00cecf3 — no deviation needed, plan's code worked verbatim; independently stress-tested beyond the 8 committed cases: many periods with a payment running out partway, all-zero/all-negative dues, non-integer Decimal amounts, input immutability, all passed)
 
 **Files:**
 - Create: `src/lib/fees/allocation.ts`
