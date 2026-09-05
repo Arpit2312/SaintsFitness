@@ -1733,14 +1733,14 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 10: Fee history table + Student Fees tab
+## Task 10: Fee history table + Student Fees tab ✅ DONE (commit 7ce64a1 -- necessary deviation: implementing the plan's literal code crashed at runtime, since React Server Components refuse to pass Prisma `Decimal` instances from a Server Component to a `"use client"` component ["Only plain objects can be passed to Client Components from Server Components. Decimal objects are not supported."]; fixed by converting every Decimal field to a plain number in `page.tsx` right at the server/client boundary, with `SerializedPeriod`/`SerializedFeeHistory` types added to `fee-history-table.tsx`/`student-fees-tab.tsx` to match -- verified as the first Server→Client wiring in this app carrying Decimal fields, no prior-art convention existed to follow; reviewed and approved with no further fixes needed)
 
 **Files:**
 - Create: `src/components/fees/fee-history-table.tsx`
 - Create: `src/components/students/student-fees-tab.tsx`
 - Modify: `src/app/(app)/students/[id]/page.tsx`
 
-- [ ] **Step 1: Write `src/components/fees/fee-history-table.tsx`**
+- [x] **Step 1: Write `src/components/fees/fee-history-table.tsx`**
 
 ```tsx
 "use client";
@@ -1748,7 +1748,20 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 import { Badge } from "@/components/ui/badge";
 import type { PeriodWithStatus, PeriodStatus } from "@/lib/fees/fee-history";
 import { formatMonthYear } from "@/lib/fees/periods";
-import { Decimal } from "@prisma/client/runtime/library";
+
+// React Server Components can only pass plain, JSON-like values across the
+// server/client boundary -- Prisma's Decimal (from PeriodWithStatus) throws
+// "Only plain objects can be passed to Client Components from Server
+// Components. Decimal objects are not supported." at request time if handed
+// to a "use client" component directly. page.tsx (the Server Component)
+// converts each period's amountDue/amountPaid to plain numbers via
+// `.toNumber()` before this client component ever sees them, so this type
+// -- not the plan's original `PeriodWithStatus[]` -- is what's actually
+// received here.
+export type SerializedPeriod = Omit<PeriodWithStatus, "amountDue" | "amountPaid"> & {
+  amountDue: number;
+  amountPaid: number;
+};
 
 const STATUS_COLORS: Record<PeriodStatus, string> = {
   PAID: "border-success text-success",
@@ -1757,7 +1770,7 @@ const STATUS_COLORS: Record<PeriodStatus, string> = {
   OVERDUE: "border-danger text-danger",
 };
 
-function formatPeriodLabel(period: PeriodWithStatus): string {
+function formatPeriodLabel(period: SerializedPeriod): string {
   const startLabel = formatMonthYear(period.start);
   const endLabel = formatMonthYear(period.end);
   return startLabel === endLabel ? startLabel : `${startLabel} – ${endLabel}`;
@@ -1768,9 +1781,9 @@ export function FeeHistoryTable({
   totalPaid,
   totalPending,
 }: {
-  periods: PeriodWithStatus[];
-  totalPaid: Decimal;
-  totalPending: Decimal;
+  periods: SerializedPeriod[];
+  totalPaid: number;
+  totalPending: number;
 }) {
   return (
     <div className="space-y-3">
@@ -1788,8 +1801,8 @@ export function FeeHistoryTable({
             {periods.map((period) => (
               <tr key={period.index} className="border-b border-card-border last:border-0">
                 <td className="p-3 text-foreground">{formatPeriodLabel(period)}</td>
-                <td className="p-3 text-muted">₹{period.amountDue.toNumber().toLocaleString("en-IN")}</td>
-                <td className="p-3 text-muted">₹{period.amountPaid.toNumber().toLocaleString("en-IN")}</td>
+                <td className="p-3 text-muted">₹{period.amountDue.toLocaleString("en-IN")}</td>
+                <td className="p-3 text-muted">₹{period.amountPaid.toLocaleString("en-IN")}</td>
                 <td className="p-3">
                   <Badge variant="outline" className={STATUS_COLORS[period.status]}>
                     {period.status}
@@ -1802,10 +1815,10 @@ export function FeeHistoryTable({
       </div>
       <div className="flex gap-6 text-sm">
         <p className="text-muted">
-          Total Paid: <span className="text-success">₹{totalPaid.toNumber().toLocaleString("en-IN")}</span>
+          Total Paid: <span className="text-success">₹{totalPaid.toLocaleString("en-IN")}</span>
         </p>
         <p className="text-muted">
-          Total Pending: <span className="text-danger">₹{totalPending.toNumber().toLocaleString("en-IN")}</span>
+          Total Pending: <span className="text-danger">₹{totalPending.toLocaleString("en-IN")}</span>
         </p>
       </div>
     </div>
@@ -1813,7 +1826,7 @@ export function FeeHistoryTable({
 }
 ```
 
-- [ ] **Step 2: Write `src/components/students/student-fees-tab.tsx`**
+- [x] **Step 2: Write `src/components/students/student-fees-tab.tsx`**
 
 This is the `"use client"` piece that owns the Fee Plan and Add Payment dialogs' open state, receiving already-computed data as props (Server Component fetch happens in `page.tsx`, Step 3 below):
 
@@ -1825,14 +1838,40 @@ import { useRouter } from "next/navigation";
 import { Wallet, Plus, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/empty-state";
-import { FeeHistoryTable } from "@/components/fees/fee-history-table";
+import { FeeHistoryTable, type SerializedPeriod } from "@/components/fees/fee-history-table";
 import { FeePlanFormDialog } from "@/components/fees/fee-plan-form-dialog";
 import { AddPaymentDialog } from "@/components/fees/add-payment-dialog";
-import type { getStudentFeeHistory } from "@/lib/queries/fees";
+import type { FeeFrequency } from "@prisma/client";
 
-type FeeHistory = Awaited<ReturnType<typeof getStudentFeeHistory>>;
+// Mirrors the shape of `Awaited<ReturnType<typeof getStudentFeeHistory>>`
+// (src/lib/queries/fees.ts), but with every Prisma Decimal field converted to
+// a plain number. React Server Components reject Decimal instances passed to
+// a "use client" component ("Only plain objects can be passed to Client
+// Components from Server Components. Decimal objects are not supported."),
+// so page.tsx converts via `.toNumber()` before handing feeHistory to this
+// component -- this type describes what actually crosses that boundary, not
+// the query's raw Decimal-bearing return type.
+type SerializedFeeHistory = {
+  plan: {
+    totalAmount: number;
+    frequency: FeeFrequency;
+    dueDate: Date;
+    discount: number;
+    finalAmount: number;
+  };
+  periods: SerializedPeriod[];
+  totalPaid: number;
+  totalPending: number;
+  nextCoverageStart: Date;
+} | null;
 
-export function StudentFeesTab({ studentId, feeHistory }: { studentId: string; feeHistory: FeeHistory }) {
+export function StudentFeesTab({
+  studentId,
+  feeHistory,
+}: {
+  studentId: string;
+  feeHistory: SerializedFeeHistory;
+}) {
   const router = useRouter();
   const [planDialogOpen, setPlanDialogOpen] = useState(false);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
@@ -1862,8 +1901,8 @@ export function StudentFeesTab({ studentId, feeHistory }: { studentId: string; f
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted">
-          ₹{plan.finalAmount.toNumber().toLocaleString("en-IN")} / {plan.frequency.toLowerCase()}
-          {plan.discount.toNumber() > 0 && ` (₹${plan.discount.toNumber().toLocaleString("en-IN")} discount applied)`}
+          ₹{plan.finalAmount.toLocaleString("en-IN")} / {plan.frequency.toLowerCase()}
+          {plan.discount > 0 && ` (₹${plan.discount.toLocaleString("en-IN")} discount applied)`}
         </p>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => setPlanDialogOpen(true)}>
@@ -1884,10 +1923,10 @@ export function StudentFeesTab({ studentId, feeHistory }: { studentId: string; f
         onOpenChange={setPlanDialogOpen}
         studentId={studentId}
         plan={{
-          totalAmount: plan.totalAmount.toNumber(),
+          totalAmount: plan.totalAmount,
           frequency: plan.frequency,
           dueDate: plan.dueDate,
-          discount: plan.discount.toNumber(),
+          discount: plan.discount,
         }}
         onSuccess={() => router.refresh()}
       />
@@ -1904,9 +1943,9 @@ export function StudentFeesTab({ studentId, feeHistory }: { studentId: string; f
 }
 ```
 
-- [ ] **Step 3: Modify `src/app/(app)/students/[id]/page.tsx`**
+- [x] **Step 3: Modify `src/app/(app)/students/[id]/page.tsx`**
 
-This is the exact current file (from Phase 1 Task 19) and the exact changes to make — three edits, shown as find-and-replace pairs:
+This is the exact current file (from Phase 1 Task 19) and the exact changes to make — three edits, shown as find-and-replace pairs, PLUS a Decimal→number conversion required by the RSC boundary issue described above:
 
 **Edit 1 — add two imports** after the existing `import { format } from "date-fns";` line:
 ```ts
@@ -1927,6 +1966,36 @@ with:
   if (!student) notFound();
 ```
 
+**Edit 2b (added, not in the original plan draft) — convert Decimal fields to plain numbers before the Client Component boundary.** Insert after `const enrollment = student.enrollments[0];`:
+```ts
+  // React Server Components refuse to pass Prisma Decimal instances to a
+  // "use client" component ("Only plain objects can be passed to Client
+  // Components from Server Components. Decimal objects are not supported."),
+  // so feeHistory's Decimal fields (plan.totalAmount/discount/finalAmount,
+  // each period's amountDue/amountPaid, totalPaid, totalPending) are
+  // converted to plain numbers here, right at the boundary, before
+  // StudentFeesTab ever receives them.
+  const feeHistoryForClient = feeHistory
+    ? {
+        plan: {
+          totalAmount: feeHistory.plan.totalAmount.toNumber(),
+          frequency: feeHistory.plan.frequency,
+          dueDate: feeHistory.plan.dueDate,
+          discount: feeHistory.plan.discount.toNumber(),
+          finalAmount: feeHistory.plan.finalAmount.toNumber(),
+        },
+        periods: feeHistory.periods.map((period) => ({
+          ...period,
+          amountDue: period.amountDue.toNumber(),
+          amountPaid: period.amountPaid.toNumber(),
+        })),
+        totalPaid: feeHistory.totalPaid.toNumber(),
+        totalPending: feeHistory.totalPending.toNumber(),
+        nextCoverageStart: feeHistory.nextCoverageStart,
+      }
+    : null;
+```
+
 **Edit 3 — replace the Fees tab's stub content.** Replace:
 ```tsx
         <TabsContent value="fees">
@@ -1936,13 +2005,13 @@ with:
 with:
 ```tsx
         <TabsContent value="fees">
-          <StudentFeesTab studentId={student.id} feeHistory={feeHistory} />
+          <StudentFeesTab studentId={student.id} feeHistory={feeHistoryForClient} />
         </TabsContent>
 ```
 
 Leave everything else in the file (the `ComingSoon` component itself, still used by the Attendance/Notes/Journey tabs; the Overview and Classes tab content) untouched.
 
-- [ ] **Step 4: Verify manually**
+- [x] **Step 4: Verify manually**
 
 ```bash
 npm run dev
@@ -1950,7 +2019,9 @@ npm run dev
 
 Log in as the seeded admin (read credentials from `.env`, don't print them — this is our own test account). Create a temporary test student. Open their profile, go to the Fees tab, confirm the empty state shows. Click "+ Set Up Fee Plan", fill in a Monthly plan (e.g. ₹1,500, start date a few months in the past to get multiple periods), save. Confirm the fee history table renders with the expected number of periods, correct Overdue/Due statuses (nothing paid yet). Click "Add Payment", confirm the coverage preview updates live as you change "Periods Covered", submit a payment for 1 period with less than the full amount (test PARTIAL), submit another payment for 2 periods with the exact full amount (test PAID + waterfall across the remaining unpaid period from before). Confirm the table updates correctly after each payment (via `router.refresh()`), and Total Paid/Total Pending look right. Clean up the test student afterward (delete its Enrollment first, then the Student — Payment/FeePlan/Receipt records need explicit deletion too since Payment/FeePlan don't cascade from Student; delete Payment+Receipt rows, then FeePlan, then Enrollment, then Student, in that dependency order). Confirm the DB is back to its pre-test state (0 students, 0 fee plans, 0 payments, 0 receipts). Stop the server.
 
-- [ ] **Step 5: Commit**
+**Result:** Verified via a full manual browser walkthrough on a dedicated port (a stray `next dev` process from the main repo checkout was found squatting on the default port and had to be killed first, to avoid silently testing stale code) — created test student ST-00044, empty state confirmed, MONTHLY ₹1,500 plan backdated to 01-Jun-2026 produced 4 periods (Jun/Jul/Aug OVERDUE, Sep DUE), a ₹1,000 partial payment correctly showed PARTIAL on Jun, a second ₹2,000 payment correctly finished Jun and paid Jul in full via the waterfall (both PAID), Total Paid/Total Pending matched by hand at every step. Cleaned up back to baseline (1 student = ST-00043 only, 0 fee plans/payments/receipts).
+
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A
