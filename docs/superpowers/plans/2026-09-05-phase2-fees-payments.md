@@ -972,7 +972,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 5: Validation schemas
+## Task 5: Validation schemas ✅ DONE (commit 858fc9a, added a periodsCovered upper bound in 34599ba — review flagged no fat-finger guard against an accidental extra digit; also updated Task 9's periodsCovered input with a matching max={60})
 
 **Files:**
 - Create: `src/lib/validations/fee-plan.ts`
@@ -1005,7 +1005,16 @@ export const paymentSchema = z.object({
   amount: z.coerce.number().positive("Amount must be greater than zero"),
   paymentDate: z.coerce.date(),
   mode: z.enum(["CASH", "UPI", "ONLINE", "BANK_TRANSFER"]),
-  periodsCovered: z.coerce.number().int().min(1, "Must cover at least 1 period"),
+  // Upper bound is a fat-finger guard, not a business rule: even at MONTHLY
+  // frequency, 60 periods is 5 years paid in advance, comfortably past any
+  // real use case, while still catching an accidental extra digit (e.g.
+  // "9999" instead of "1") from silently producing a coverageEnd many
+  // millennia in the future.
+  periodsCovered: z.coerce
+    .number()
+    .int()
+    .min(1, "Must cover at least 1 period")
+    .max(60, "Must cover 60 periods or fewer"),
   notes: z.string().optional(),
 });
 
@@ -1059,6 +1068,8 @@ npx vitest run tests/unit/fee-plan-validation.test.ts
 ```
 
 Expected: PASS, 5 tests.
+
+**Also add `tests/unit/payment-validation.test.ts`** covering `paymentSchema`'s `periodsCovered` bound specifically (accepts 1, accepts the upper bound 60, rejects 0, rejects above 60/a fat-fingered value like 9999) — a code review flagged that `periodsCovered` had no upper bound, risking a coverageEnd many millennia in the future from an accidental extra digit; the schema above already includes the `.max(60, ...)` fix.
 
 - [ ] **Step 5: Commit**
 
@@ -1634,6 +1645,7 @@ export function AddPaymentDialog({
                 id="periodsCovered"
                 type="number"
                 min={1}
+                max={60}
                 {...register("periodsCovered")}
                 disabled={submitting}
               />
