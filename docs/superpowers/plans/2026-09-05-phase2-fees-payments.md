@@ -1,0 +1,2039 @@
+# SAINTS Phase 2: Fees & Payments Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Let the admin set up a fee plan per student, record payments (including ones covering multiple periods at once), see live-computed fee status/history, and generate a printable/shareable digital receipt per payment — making the Dashboard's existing Collection/Pending Fees stat cards show real numbers for the first time.
+
+**Architecture:** Fee status is computed on read from two tables (`FeePlan`, `Payment`) — never materialized, no cron job. A small pure-logic module (`src/lib/fees/`) enumerates calendar periods from a plan's start date and waterfall-allocates payments across them; this is the trickiest part of the phase and gets full TDD coverage. Everything else follows the exact conventions Phase 1 already established: `src/lib/queries/` (reads, `server-only`) vs `src/actions/` (mutations, `"use server"`), Server Component pages + `"use client"` list components + `router.refresh()`, the shared `useGuardedDialogOpenChange` hook for dialogs, and the `SelectValue` children-function pattern wherever a value differs from its display label.
+
+**Tech Stack:** Next.js 16, TypeScript, Prisma (Decimal for all money), Zod, react-hook-form, Tailwind v4 + shadcn/ui (base-ui), Vitest.
+
+**Reference spec:** `docs/superpowers/specs/2026-09-05-phase2-fees-payments-design.md`
+
+**Existing codebase conventions to follow exactly (read these files before starting if unfamiliar):**
+- `src/components/classes/course-form-dialog.tsx` — the canonical dialog pattern: `useGuardedDialogOpenChange`, `showCloseButton={!submitting}`, `useEffect`+`reset()` re-seed on open/target change, fields `disabled={submitting}`, try/catch/finally submit handler, optional `onSuccess` prop.
+- `src/components/classes/batch-form-dialog.tsx` — the `SelectValue` children-function pattern for when a Select's value (an id) differs from its display label, plus the `v as string` cast comment for `onValueChange`.
+- `src/components/classes/courses-list.tsx` + `src/app/(app)/classes/courses/page.tsx` — the Server Component (fetch) + `"use client"` list component (UI state only, `router.refresh()` after mutations) split.
+- `src/lib/queries/courses.ts` + `src/actions/courses.ts` — the read/write file split (`import "server-only"` vs `"use server"`).
+- `src/hooks/use-guarded-dialog.ts` — reuse directly, do not reinvent.
+- `src/lib/ids.ts` — `generateReceiptNumber()` already exists from Phase 1, unused until now.
+
+---
+
+## Task 1: Schema migration — Payment coverage range + one-plan-per-student
+
+**Files:**
+- Modify: `prisma/schema.prisma`
+
+- [ ] **Step 1: Update the `FeePlan`, `Payment`, and `Student` models**
+
+In `prisma/schema.prisma`, find the `FeePlan` model and add `@unique` to `studentId` (enforces one fee plan per student, and is required for the `upsert({ where: { studentId } })` pattern Task 7 uses):
+
+Also add a one-line comment above `dueDate` — this Phase 1 field name is being repurposed by Phase 2 as the plan's *start/anchor* date (periods are enumerated forward from it), not a single one-off due date, and that's easy to misread from the name alone:
+
+```prisma
+model FeePlan {
+  id          String       @id @default(cuid())
+  studentId   String       @unique
+  student     Student      @relation(fields: [studentId], references: [id])
+  totalAmount Decimal      @db.Decimal(10, 2)
+  frequency   FeeFrequency
+  /// The plan's start/anchor date -- periods are enumerated forward from
+  /// here based on `frequency`, not a single one-off due date. Named
+  /// `dueDate` for historical reasons (Phase 1's original schema).
+  dueDate     DateTime
+  discount    Decimal      @default(0) @db.Decimal(10, 2)
+  finalAmount Decimal      @db.Decimal(10, 2)
+  createdAt   DateTime     @default(now())
+  payments    Payment[]
+}
+```
+
+Find the `Payment` model and replace the free-text `period: String` field with `coverageStart`/`coverageEnd`:
+
+```prisma
+model Payment {
+  id            String      @id @default(cuid())
+  studentId     String
+  student       Student     @relation(fields: [studentId], references: [id])
+  feePlanId     String?
+  feePlan       FeePlan?    @relation(fields: [feePlanId], references: [id])
+  amount        Decimal     @db.Decimal(10, 2)
+  paymentDate   DateTime
+  mode          PaymentMode
+  coverageStart DateTime
+  coverageEnd   DateTime
+  notes         String?
+  createdAt     DateTime    @default(now())
+  receipt       Receipt?
+}
+```
+
+Find the `Student` model and change `feePlans FeePlan[]` to `feePlan FeePlan?` (singular — matches the new one-plan-per-student constraint and the existing 1:1 pattern already used for `address`/`emergencyContact`/`parentDetails`/`journeyProgress` on this same model):
+
+```prisma
+model Student {
+  id          String        @id @default(cuid())
+  studentCode String        @unique
+  name        String
+  photoUrl    String?
+  mobile      String
+  dob         DateTime
+  gender      Gender
+  joiningDate DateTime
+  status      StudentStatus @default(ACTIVE)
+  deletedAt   DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  address          Address?
+  emergencyContact EmergencyContact?
+  parentDetails    ParentDetails?
+  enrollments      Enrollment[]
+  feePlan          FeePlan?
+  payments         Payment[]
+  attendance       Attendance[]
+  notes            InstructorNote[]
+  journeyProgress  JourneyProgress?
+  notifications    Notification[]
+}
+```
+
+- [ ] **Step 2: Run the migration**
+
+The `Payment` table is currently empty (Phase 1 never populated it), so this migration has no real data to preserve or backfill — a plain `prisma migrate dev` is safe here, unlike Task 4/Account.issuer's migration in Phase 1 which needed a careful expand/backfill/constrain sequence for a populated table. Confirm the `Payment` table really is empty before running, as a safety check:
+
+```bash
+npx tsx -e "
+import { PrismaClient } from '@prisma/client';
+const prisma = new PrismaClient();
+prisma.payment.count().then((n) => { console.log('Payment rows:', n); return prisma.\$disconnect(); });
+"
+```
+
+Expected: `Payment rows: 0`. If it's not 0, STOP and report back rather than proceeding — that would mean something unexpected has payment data already and the migration needs a different (expand/backfill) approach.
+
+```bash
+npx prisma migrate dev --name fee_plan_unique_and_payment_coverage_range
+```
+
+Expected: migration applies cleanly, Prisma Client regenerates with no errors.
+
+- [ ] **Step 3: Verify the migration structurally**
+
+```bash
+npx tsx -e "
+import { PrismaClient } from '@prisma/client';
+const prisma = new PrismaClient();
+prisma.feePlan.findMany().then((rows) => { console.log('FeePlan rows:', rows.length); return prisma.\$disconnect(); });
+"
+```
+
+Expected: `FeePlan rows: 0` (table also empty, migration just changes shape, not data). Also run `npx tsc --noEmit` and confirm it's clean — this proves the regenerated Prisma Client types (e.g. `Student.feePlan` now singular, `Payment.coverageStart`/`coverageEnd`) are consistent with nothing else in the codebase referencing the old shapes (nothing does yet, since this is brand new functionality).
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add -A
+git commit -m "Migrate FeePlan/Payment schema: one plan per student, coverage range
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+```
+
+---
+
+## Task 2: Period enumeration + status calculation (TDD)
+
+**Files:**
+- Create: `src/lib/fees/periods.ts`
+- Create: `tests/unit/periods.test.ts`
+
+This is pure logic — no Prisma queries, no `"use server"`/`"server-only"` needed, safe to import from both server and client code (the Add Payment dialog will use `computeCoverageRange` client-side for a live preview).
+
+- [ ] **Step 1: Write the failing tests in `tests/unit/periods.test.ts`**
+
+```ts
+import { describe, it, expect } from "vitest";
+import { Decimal } from "@prisma/client/runtime/library";
+import {
+  enumeratePeriods,
+  calculatePeriodStatus,
+  advancePeriodStart,
+  computeCoverageRange,
+} from "@/lib/fees/periods";
+
+describe("enumeratePeriods", () => {
+  it("enumerates monthly periods from plan start through the current period, inclusive", () => {
+    const start = new Date("2026-06-15"); // mid-June
+    const asOf = new Date("2026-09-04");
+    const periods = enumeratePeriods(start, "MONTHLY", new Decimal(1500), asOf);
+    expect(periods).toHaveLength(4); // June, July, August, September
+    expect(periods[0].start.toISOString().slice(0, 10)).toBe("2026-06-01");
+    expect(periods[0].end.toISOString().slice(0, 10)).toBe("2026-06-30");
+    expect(periods[3].start.toISOString().slice(0, 10)).toBe("2026-09-01");
+    periods.forEach((p) => expect(p.amountDue.toString()).toBe("1500"));
+  });
+
+  it("does not include future periods beyond asOf", () => {
+    const start = new Date("2026-09-01");
+    const asOf = new Date("2026-09-04");
+    const periods = enumeratePeriods(start, "MONTHLY", new Decimal(1500), asOf);
+    expect(periods).toHaveLength(1);
+  });
+
+  it("enumerates quarterly periods as 3-month blocks", () => {
+    const start = new Date("2026-01-01");
+    const asOf = new Date("2026-07-15");
+    const periods = enumeratePeriods(start, "QUARTERLY", new Decimal(4500), asOf);
+    expect(periods).toHaveLength(3); // Jan-Mar, Apr-Jun, Jul-Sep
+    expect(periods[0].end.toISOString().slice(0, 10)).toBe("2026-03-31");
+    expect(periods[2].start.toISOString().slice(0, 10)).toBe("2026-07-01");
+  });
+
+  it("CUSTOM frequency yields exactly one period once the start date has passed", () => {
+    const start = new Date("2026-08-01");
+    const asOf = new Date("2026-09-04");
+    const periods = enumeratePeriods(start, "CUSTOM", new Decimal(5000), asOf);
+    expect(periods).toHaveLength(1);
+    expect(periods[0].start).toEqual(start);
+    expect(periods[0].dueDate).toEqual(start);
+  });
+
+  it("CUSTOM frequency yields no periods before the start date", () => {
+    const start = new Date("2026-12-01");
+    const asOf = new Date("2026-09-04");
+    expect(enumeratePeriods(start, "CUSTOM", new Decimal(5000), asOf)).toHaveLength(0);
+  });
+
+  it("yields no periods when the plan hasn't started yet", () => {
+    const start = new Date("2026-12-01");
+    const asOf = new Date("2026-09-04");
+    expect(enumeratePeriods(start, "MONTHLY", new Decimal(1500), asOf)).toHaveLength(0);
+  });
+});
+
+describe("calculatePeriodStatus", () => {
+  const dueDate = new Date("2026-08-31");
+
+  it("is PAID when amountPaid >= amountDue", () => {
+    expect(
+      calculatePeriodStatus(new Decimal(1500), new Decimal(1500), dueDate, new Date("2026-08-15"))
+    ).toBe("PAID");
+    expect(
+      calculatePeriodStatus(new Decimal(1500), new Decimal(1600), dueDate, new Date("2026-08-15"))
+    ).toBe("PAID");
+  });
+
+  it("is PARTIAL whenever something (but not enough) has been paid, regardless of due date", () => {
+    expect(
+      calculatePeriodStatus(new Decimal(1500), new Decimal(1000), dueDate, new Date("2026-09-04"))
+    ).toBe("PARTIAL");
+  });
+
+  it("is DUE when nothing has been paid and the due date hasn't passed", () => {
+    expect(
+      calculatePeriodStatus(new Decimal(1500), new Decimal(0), dueDate, new Date("2026-08-15"))
+    ).toBe("DUE");
+  });
+
+  it("is OVERDUE when nothing has been paid and the due date has passed", () => {
+    expect(
+      calculatePeriodStatus(new Decimal(1500), new Decimal(0), dueDate, new Date("2026-09-04"))
+    ).toBe("OVERDUE");
+  });
+});
+
+describe("advancePeriodStart", () => {
+  it("advances a monthly period by one month", () => {
+    const next = advancePeriodStart(new Date("2026-06-01"), "MONTHLY");
+    expect(next.toISOString().slice(0, 10)).toBe("2026-07-01");
+  });
+
+  it("advances a quarterly period by three months", () => {
+    const next = advancePeriodStart(new Date("2026-01-01"), "QUARTERLY");
+    expect(next.toISOString().slice(0, 10)).toBe("2026-04-01");
+  });
+
+  it("throws for CUSTOM, which has no recurring periods", () => {
+    expect(() => advancePeriodStart(new Date("2026-01-01"), "CUSTOM")).toThrow();
+  });
+});
+
+describe("computeCoverageRange", () => {
+  it("computes a 3-month monthly range", () => {
+    const { coverageStart, coverageEnd } = computeCoverageRange(new Date("2026-09-01"), 3, "MONTHLY");
+    expect(coverageStart.toISOString().slice(0, 10)).toBe("2026-09-01");
+    expect(coverageEnd.toISOString().slice(0, 10)).toBe("2026-11-30");
+  });
+
+  it("computes a single-quarter range for a quarterly plan", () => {
+    const { coverageStart, coverageEnd } = computeCoverageRange(new Date("2026-01-01"), 1, "QUARTERLY");
+    expect(coverageEnd.toISOString().slice(0, 10)).toBe("2026-03-31");
+  });
+
+  it("collapses to a single day for CUSTOM regardless of periodsCovered", () => {
+    const { coverageStart, coverageEnd } = computeCoverageRange(new Date("2026-09-01"), 1, "CUSTOM");
+    expect(coverageStart).toEqual(coverageEnd);
+  });
+});
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+```bash
+npx vitest run tests/unit/periods.test.ts
+```
+
+Expected: FAIL — `Cannot find module '@/lib/fees/periods'`.
+
+- [ ] **Step 3: Implement `src/lib/fees/periods.ts`**
+
+```ts
+import type { FeeFrequency } from "@prisma/client";
+import { Decimal } from "@prisma/client/runtime/library";
+import { addMonths, startOfMonth, endOfMonth } from "date-fns";
+
+export type PeriodStatus = "PAID" | "PARTIAL" | "DUE" | "OVERDUE";
+
+export type Period = {
+  index: number;
+  start: Date;
+  end: Date;
+  dueDate: Date;
+  amountDue: Decimal;
+};
+
+/** Calendar months per period. CUSTOM has no recurring cycle (0 = "not applicable"). */
+export function periodLengthInMonths(frequency: FeeFrequency): number {
+  switch (frequency) {
+    case "MONTHLY":
+      return 1;
+    case "QUARTERLY":
+      return 3;
+    case "YEARLY":
+      return 12;
+    case "CUSTOM":
+      return 0;
+  }
+}
+
+/** Start of the next period after `date` (which must itself be a period start). Throws for CUSTOM. */
+export function advancePeriodStart(date: Date, frequency: FeeFrequency): Date {
+  const months = periodLengthInMonths(frequency);
+  if (months === 0) {
+    throw new Error("CUSTOM frequency has no recurring periods to advance through");
+  }
+  return startOfMonth(addMonths(date, months));
+}
+
+/**
+ * Periods from the plan's start date through (and including) the period
+ * containing `asOf` -- never future periods beyond that. CUSTOM yields at
+ * most one period (Decision 3a in the Phase 2 spec): the whole finalAmount,
+ * due once, with no recurring cycle.
+ */
+export function enumeratePeriods(
+  planStartDate: Date,
+  frequency: FeeFrequency,
+  amountPerPeriod: Decimal,
+  asOf: Date
+): Period[] {
+  if (frequency === "CUSTOM") {
+    if (planStartDate > asOf) return [];
+    return [
+      { index: 0, start: planStartDate, end: planStartDate, dueDate: planStartDate, amountDue: amountPerPeriod },
+    ];
+  }
+
+  const periods: Period[] = [];
+  let start = startOfMonth(planStartDate);
+  let index = 0;
+  const months = periodLengthInMonths(frequency);
+  while (start <= asOf) {
+    const end = endOfMonth(addMonths(start, months - 1));
+    periods.push({ index, start, end, dueDate: end, amountDue: amountPerPeriod });
+    start = advancePeriodStart(start, frequency);
+    index++;
+  }
+  return periods;
+}
+
+/**
+ * PARTIAL takes precedence over OVERDUE: once any payment has landed on a
+ * period, it reads as "Partial" regardless of whether its due date has since
+ * passed (matches the master spec's Fee History example, where a partially
+ * paid past month shows "Partial", not "Overdue").
+ */
+export function calculatePeriodStatus(
+  amountDue: Decimal,
+  amountPaid: Decimal,
+  dueDate: Date,
+  today: Date
+): PeriodStatus {
+  if (amountPaid.gte(amountDue)) return "PAID";
+  if (amountPaid.gt(0)) return "PARTIAL";
+  if (today > dueDate) return "OVERDUE";
+  return "DUE";
+}
+
+/** The coverage range a new payment of `periodsCovered` periods would span, starting at `coverageStart`. */
+export function computeCoverageRange(
+  coverageStart: Date,
+  periodsCovered: number,
+  frequency: FeeFrequency
+): { coverageStart: Date; coverageEnd: Date } {
+  if (frequency === "CUSTOM") {
+    return { coverageStart, coverageEnd: coverageStart };
+  }
+  const months = periodLengthInMonths(frequency) * periodsCovered;
+  const coverageEnd = endOfMonth(addMonths(coverageStart, months - 1));
+  return { coverageStart, coverageEnd };
+}
+```
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+```bash
+npx vitest run tests/unit/periods.test.ts
+```
+
+Expected: PASS, all tests green.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add -A
+git commit -m "Add fee period enumeration and status calculation with unit tests
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+```
+
+---
+
+## Task 3: Waterfall payment allocation (TDD)
+
+**Files:**
+- Create: `src/lib/fees/allocation.ts`
+- Create: `tests/unit/allocation.test.ts`
+
+- [ ] **Step 1: Write the failing tests in `tests/unit/allocation.test.ts`**
+
+```ts
+import { describe, it, expect } from "vitest";
+import { Decimal } from "@prisma/client/runtime/library";
+import { waterfallAllocate } from "@/lib/fees/allocation";
+
+describe("waterfallAllocate", () => {
+  it("fully covers each period in order when the payment exactly matches total due", () => {
+    const result = waterfallAllocate(new Decimal(4500), [new Decimal(1500), new Decimal(1500), new Decimal(1500)]);
+    expect(result.map((d) => d.toString())).toEqual(["1500", "1500", "1500"]);
+  });
+
+  it("partially covers the last period it reaches when underpaying (the waterfall scenario)", () => {
+    const result = waterfallAllocate(new Decimal(4000), [new Decimal(1500), new Decimal(1500), new Decimal(1500)]);
+    expect(result.map((d) => d.toString())).toEqual(["1500", "1500", "1000"]);
+  });
+
+  it("allocates nothing to periods beyond what the payment covers", () => {
+    const result = waterfallAllocate(new Decimal(1500), [new Decimal(1500), new Decimal(1500), new Decimal(1500)]);
+    expect(result.map((d) => d.toString())).toEqual(["1500", "0", "0"]);
+  });
+
+  it("caps allocation at each period's remaining due, never over-allocating a single period", () => {
+    // Simulates a period that's already partially paid elsewhere (remaining due < full amount).
+    const result = waterfallAllocate(new Decimal(2000), [new Decimal(500), new Decimal(1500)]);
+    expect(result.map((d) => d.toString())).toEqual(["500", "1500"]);
+  });
+
+  it("handles an overpayment gracefully -- excess is simply not allocated anywhere", () => {
+    const result = waterfallAllocate(new Decimal(10000), [new Decimal(1500), new Decimal(1500)]);
+    expect(result.map((d) => d.toString())).toEqual(["1500", "1500"]);
+  });
+
+  it("returns an empty array for zero periods", () => {
+    expect(waterfallAllocate(new Decimal(1500), [])).toEqual([]);
+  });
+
+  it("allocates zero to every period for a zero-amount payment", () => {
+    const result = waterfallAllocate(new Decimal(0), [new Decimal(1500), new Decimal(1500)]);
+    expect(result.map((d) => d.toString())).toEqual(["0", "0"]);
+  });
+
+  it("treats a negative remaining-due (already overpaid) as zero, not negative allocation", () => {
+    const result = waterfallAllocate(new Decimal(1500), [new Decimal(-500), new Decimal(1500)]);
+    expect(result.map((d) => d.toString())).toEqual(["0", "1500"]);
+  });
+});
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+```bash
+npx vitest run tests/unit/allocation.test.ts
+```
+
+Expected: FAIL — `Cannot find module '@/lib/fees/allocation'`.
+
+- [ ] **Step 3: Implement `src/lib/fees/allocation.ts`**
+
+```ts
+import { Decimal } from "@prisma/client/runtime/library";
+
+/**
+ * Waterfall-allocates a single payment across an ordered list of periods'
+ * remaining due amounts: the first period is filled up to its remaining due
+ * first, with any leftover spilling into the next, and so on. Amounts
+ * already fully paid should be passed in as 0 (or negative, from an
+ * overpayment elsewhere) -- either way this function only ever allocates
+ * min(remaining payment, remaining due) to each period, never negative.
+ */
+export function waterfallAllocate(paymentAmount: Decimal, remainingDues: Decimal[]): Decimal[] {
+  let remaining = paymentAmount;
+  const allocations: Decimal[] = [];
+  for (const due of remainingDues) {
+    const dueClamped = Decimal.max(due, 0);
+    const alloc = Decimal.max(Decimal.min(remaining, dueClamped), 0);
+    allocations.push(alloc);
+    remaining = remaining.minus(alloc);
+  }
+  return allocations;
+}
+```
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+```bash
+npx vitest run tests/unit/allocation.test.ts
+```
+
+Expected: PASS, all tests green.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add -A
+git commit -m "Add waterfall payment allocation with unit tests
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+```
+
+---
+
+## Task 4: Fee history composition + next-unpaid-period helper (TDD)
+
+**Files:**
+- Create: `src/lib/fees/fee-history.ts`
+- Create: `tests/unit/fee-history.test.ts`
+
+This composes Tasks 2 and 3 into the two functions the rest of the app actually calls: `computeFeeHistory` (for display) and `getCoverageStartForNewPayment` (for the Add Payment form's default coverage start).
+
+- [ ] **Step 1: Write the failing tests in `tests/unit/fee-history.test.ts`**
+
+```ts
+import { describe, it, expect } from "vitest";
+import { Decimal } from "@prisma/client/runtime/library";
+import { computeFeeHistory, getCoverageStartForNewPayment, type PaymentForAllocation } from "@/lib/fees/fee-history";
+
+const PLAN_START = new Date("2026-06-01");
+const TODAY = new Date("2026-09-04"); // periods: June, July, August, September
+
+function payment(overrides: Partial<PaymentForAllocation>): PaymentForAllocation {
+  return {
+    amount: new Decimal(1500),
+    paymentDate: new Date("2026-06-05"),
+    coverageStart: new Date("2026-06-01"),
+    coverageEnd: new Date("2026-06-30"),
+    ...overrides,
+  };
+}
+
+describe("computeFeeHistory", () => {
+  it("marks fully-paid periods as PAID and totals correctly with no payments at all", () => {
+    const { periods, totalPaid, totalPending } = computeFeeHistory(
+      PLAN_START,
+      "MONTHLY",
+      new Decimal(1500),
+      [],
+      TODAY
+    );
+    expect(periods).toHaveLength(4);
+    periods.forEach((p) => expect(p.status).toBe(p.dueDate < TODAY ? "OVERDUE" : "DUE"));
+    expect(totalPaid.toString()).toBe("0");
+    expect(totalPending.toString()).toBe("6000"); // 4 x 1500
+  });
+
+  it("applies a single-period payment to just that period", () => {
+    const payments = [payment({})]; // June only
+    const { periods, totalPaid } = computeFeeHistory(PLAN_START, "MONTHLY", new Decimal(1500), payments, TODAY);
+    expect(periods[0].status).toBe("PAID");
+    expect(periods[0].amountPaid.toString()).toBe("1500");
+    expect(periods[1].status).toBe("OVERDUE"); // July, unpaid, past due
+    expect(totalPaid.toString()).toBe("1500");
+  });
+
+  it("waterfall-applies a multi-period payment across the periods it covers", () => {
+    const payments = [
+      payment({
+        amount: new Decimal(4000),
+        coverageStart: new Date("2026-06-01"),
+        coverageEnd: new Date("2026-08-31"), // June, July, August
+      }),
+    ];
+    const { periods, totalPaid, totalPending } = computeFeeHistory(
+      PLAN_START,
+      "MONTHLY",
+      new Decimal(1500),
+      payments,
+      TODAY
+    );
+    expect(periods[0].status).toBe("PAID"); // June: 1500 of 1500
+    expect(periods[1].status).toBe("PAID"); // July: 1500 of 1500
+    expect(periods[2].status).toBe("PARTIAL"); // August: 1000 of 1500
+    expect(periods[2].amountPaid.toString()).toBe("1000");
+    expect(periods[3].status).toBe("DUE"); // September: untouched, not yet overdue since it's the current period
+    expect(totalPaid.toString()).toBe("4000");
+    expect(totalPending.toString()).toBe("2000"); // 500 (Aug) + 1500 (Sep)
+  });
+
+  it("combines two payments landing on the same period (a partial top-up)", () => {
+    const payments = [
+      payment({ amount: new Decimal(1000) }), // June, partial
+      payment({ amount: new Decimal(500), paymentDate: new Date("2026-06-20") }), // June, top-up
+    ];
+    const { periods } = computeFeeHistory(PLAN_START, "MONTHLY", new Decimal(1500), payments, TODAY);
+    expect(periods[0].status).toBe("PAID");
+    expect(periods[0].amountPaid.toString()).toBe("1500");
+  });
+
+  it("ignores a payment whose coverage range doesn't overlap any enumerated period", () => {
+    const payments = [payment({ coverageStart: new Date("2027-01-01"), coverageEnd: new Date("2027-01-31") })];
+    const { periods, totalPaid } = computeFeeHistory(PLAN_START, "MONTHLY", new Decimal(1500), payments, TODAY);
+    periods.forEach((p) => expect(p.amountPaid.toString()).toBe("0"));
+    expect(totalPaid.toString()).toBe("0");
+  });
+});
+
+describe("getCoverageStartForNewPayment", () => {
+  it("starts at the first unpaid (partial or untouched) period", () => {
+    const payments = [payment({})]; // June fully paid
+    const start = getCoverageStartForNewPayment(PLAN_START, "MONTHLY", new Decimal(1500), payments, TODAY);
+    expect(start.toISOString().slice(0, 10)).toBe("2026-07-01"); // July, first unpaid
+  });
+
+  it("starts at the current period when nothing has been paid yet", () => {
+    const start = getCoverageStartForNewPayment(PLAN_START, "MONTHLY", new Decimal(1500), [], TODAY);
+    expect(start.toISOString().slice(0, 10)).toBe("2026-06-01");
+  });
+
+  it("advances past all enumerated periods (pays ahead) once everything up to today is fully paid", () => {
+    const payments = [
+      payment({ coverageStart: new Date("2026-06-01"), coverageEnd: new Date("2026-09-30"), amount: new Decimal(6000) }),
+    ];
+    const start = getCoverageStartForNewPayment(PLAN_START, "MONTHLY", new Decimal(1500), payments, TODAY);
+    expect(start.toISOString().slice(0, 10)).toBe("2026-10-01"); // October, one past the last enumerated (September)
+  });
+
+  it("starts at the plan's own start date for a CUSTOM plan with no payments yet", () => {
+    const customStart = new Date("2026-09-01");
+    const start = getCoverageStartForNewPayment(customStart, "CUSTOM", new Decimal(5000), [], TODAY);
+    expect(start).toEqual(customStart);
+  });
+});
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+```bash
+npx vitest run tests/unit/fee-history.test.ts
+```
+
+Expected: FAIL — `Cannot find module '@/lib/fees/fee-history'`.
+
+- [ ] **Step 3: Implement `src/lib/fees/fee-history.ts`**
+
+```ts
+import { Decimal } from "@prisma/client/runtime/library";
+import type { FeeFrequency } from "@prisma/client";
+import { startOfMonth } from "date-fns";
+import { enumeratePeriods, calculatePeriodStatus, advancePeriodStart, type Period, type PeriodStatus } from "./periods";
+import { waterfallAllocate } from "./allocation";
+
+// Re-exported so consumers (fee-history-table.tsx, fees-list.tsx) can import
+// both the composed types and the base PeriodStatus from this one module.
+export type { PeriodStatus } from "./periods";
+
+export type PeriodWithStatus = Period & {
+  amountPaid: Decimal;
+  status: PeriodStatus;
+};
+
+export type PaymentForAllocation = {
+  amount: Decimal;
+  paymentDate: Date;
+  coverageStart: Date;
+  coverageEnd: Date;
+};
+
+export function computeFeeHistory(
+  planStartDate: Date,
+  frequency: FeeFrequency,
+  amountPerPeriod: Decimal,
+  payments: PaymentForAllocation[],
+  today: Date
+): { periods: PeriodWithStatus[]; totalPaid: Decimal; totalPending: Decimal } {
+  const periods = enumeratePeriods(planStartDate, frequency, amountPerPeriod, today);
+  const paidPerPeriod = periods.map(() => new Decimal(0));
+
+  const sortedPayments = [...payments].sort((a, b) => a.paymentDate.getTime() - b.paymentDate.getTime());
+  for (const pay of sortedPayments) {
+    const coveredIndices = periods
+      .map((p, i) => ({ p, i }))
+      .filter(({ p }) => p.start <= pay.coverageEnd && p.end >= pay.coverageStart)
+      .map(({ i }) => i);
+
+    if (coveredIndices.length === 0) continue;
+
+    const remainingDues = coveredIndices.map((i) => periods[i].amountDue.minus(paidPerPeriod[i]));
+    const allocations = waterfallAllocate(pay.amount, remainingDues);
+    coveredIndices.forEach((i, k) => {
+      paidPerPeriod[i] = paidPerPeriod[i].plus(allocations[k]);
+    });
+  }
+
+  const withStatus: PeriodWithStatus[] = periods.map((p, i) => ({
+    ...p,
+    amountPaid: paidPerPeriod[i],
+    status: calculatePeriodStatus(p.amountDue, paidPerPeriod[i], p.dueDate, today),
+  }));
+
+  const totalPaid = paidPerPeriod.reduce((sum, p) => sum.plus(p), new Decimal(0));
+  const totalDue = periods.reduce((sum, p) => sum.plus(p.amountDue), new Decimal(0));
+  const totalPending = Decimal.max(totalDue.minus(totalPaid), 0);
+
+  return { periods: withStatus, totalPaid, totalPending };
+}
+
+/**
+ * Where a new payment should start covering from: the first period that
+ * isn't fully PAID yet, or -- if every enumerated period is fully paid --
+ * one period past the last enumerated period (paying ahead of schedule).
+ */
+export function getCoverageStartForNewPayment(
+  planStartDate: Date,
+  frequency: FeeFrequency,
+  amountPerPeriod: Decimal,
+  payments: PaymentForAllocation[],
+  today: Date
+): Date {
+  const { periods } = computeFeeHistory(planStartDate, frequency, amountPerPeriod, payments, today);
+
+  const firstUnpaid = periods.find((p) => p.status !== "PAID");
+  if (firstUnpaid) return firstUnpaid.start;
+
+  if (periods.length === 0) {
+    return frequency === "CUSTOM" ? planStartDate : startOfMonth(planStartDate);
+  }
+
+  const last = periods[periods.length - 1];
+  if (frequency === "CUSTOM") return last.start; // one-time fee, already paid -- no further periods
+  return advancePeriodStart(last.start, frequency);
+}
+```
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+```bash
+npx vitest run tests/unit/fee-history.test.ts
+```
+
+Expected: PASS, all tests green.
+
+- [ ] **Step 5: Run the full suite to confirm no regressions**
+
+```bash
+npx vitest run
+```
+
+Expected: all pre-existing tests plus these three new files' tests all pass (check the count against what was passing before this task — should be the prior total plus the tests added in Tasks 2-4).
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add -A
+git commit -m "Add fee history composition and next-unpaid-period helper
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+```
+
+---
+
+## Task 5: Validation schemas
+
+**Files:**
+- Create: `src/lib/validations/fee-plan.ts`
+- Create: `src/lib/validations/payment.ts`
+
+- [ ] **Step 1: Write `src/lib/validations/fee-plan.ts`**
+
+```ts
+import { z } from "zod";
+
+export const feePlanSchema = z.object({
+  totalAmount: z.coerce.number().positive("Total amount must be greater than zero"),
+  frequency: z.enum(["MONTHLY", "QUARTERLY", "YEARLY", "CUSTOM"]),
+  dueDate: z.coerce.date(),
+  discount: z.coerce.number().min(0, "Discount cannot be negative").default(0),
+}).refine((data) => data.discount <= data.totalAmount, {
+  message: "Discount cannot exceed the total amount",
+  path: ["discount"],
+});
+
+export type FeePlanInput = z.infer<typeof feePlanSchema>;
+```
+
+- [ ] **Step 2: Write `src/lib/validations/payment.ts`**
+
+```ts
+import { z } from "zod";
+
+export const paymentSchema = z.object({
+  amount: z.coerce.number().positive("Amount must be greater than zero"),
+  paymentDate: z.coerce.date(),
+  mode: z.enum(["CASH", "UPI", "ONLINE", "BANK_TRANSFER"]),
+  periodsCovered: z.coerce.number().int().min(1, "Must cover at least 1 period"),
+  notes: z.string().optional(),
+});
+
+export type PaymentInput = z.infer<typeof paymentSchema>;
+```
+
+- [ ] **Step 3: Add unit tests for the trickier validation rule in `tests/unit/fee-plan-validation.test.ts`**
+
+```ts
+import { describe, it, expect } from "vitest";
+import { feePlanSchema } from "@/lib/validations/fee-plan";
+
+const validInput = {
+  totalAmount: 1500,
+  frequency: "MONTHLY" as const,
+  dueDate: "2026-09-01",
+  discount: 0,
+};
+
+describe("feePlanSchema", () => {
+  it("accepts a valid plan", () => {
+    expect(feePlanSchema.safeParse(validInput).success).toBe(true);
+  });
+
+  it("rejects a zero or negative total amount", () => {
+    expect(feePlanSchema.safeParse({ ...validInput, totalAmount: 0 }).success).toBe(false);
+    expect(feePlanSchema.safeParse({ ...validInput, totalAmount: -100 }).success).toBe(false);
+  });
+
+  it("rejects a discount larger than the total amount", () => {
+    expect(feePlanSchema.safeParse({ ...validInput, totalAmount: 1000, discount: 1500 }).success).toBe(false);
+  });
+
+  it("accepts a discount exactly equal to the total amount (free plan)", () => {
+    expect(feePlanSchema.safeParse({ ...validInput, totalAmount: 1000, discount: 1000 }).success).toBe(true);
+  });
+
+  it("defaults discount to 0 when omitted", () => {
+    const { discount, ...withoutDiscount } = validInput;
+    const result = feePlanSchema.safeParse(withoutDiscount);
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.discount).toBe(0);
+  });
+});
+```
+
+- [ ] **Step 4: Run the tests**
+
+```bash
+npx vitest run tests/unit/fee-plan-validation.test.ts
+```
+
+Expected: PASS, 5 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add -A
+git commit -m "Add fee plan and payment validation schemas
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+```
+
+---
+
+## Task 6: Fee queries (server-only reads)
+
+**Files:**
+- Create: `src/lib/queries/fees.ts`
+
+- [ ] **Step 1: Write `src/lib/queries/fees.ts`**
+
+```ts
+// Read-only queries, not mutations -- lives outside src/actions/ (which is
+// "use server") so these can never be called as Server Actions from client
+// code. "server-only" makes any client-side value import a build error;
+// client components that need a return type should use `import type`
+// instead (see src/components/classes/courses-list.tsx for the pattern).
+import "server-only";
+
+import { prisma } from "@/lib/db";
+import { computeFeeHistory, getCoverageStartForNewPayment } from "@/lib/fees/fee-history";
+
+export async function getStudentFeeHistory(studentId: string) {
+  const plan = await prisma.feePlan.findUnique({
+    where: { studentId },
+    include: { payments: true },
+  });
+  if (!plan) return null;
+
+  const today = new Date();
+  const { periods, totalPaid, totalPending } = computeFeeHistory(
+    plan.dueDate,
+    plan.frequency,
+    plan.finalAmount,
+    plan.payments,
+    today
+  );
+  const nextCoverageStart = getCoverageStartForNewPayment(
+    plan.dueDate,
+    plan.frequency,
+    plan.finalAmount,
+    plan.payments,
+    today
+  );
+
+  return { plan, periods, totalPaid, totalPending, nextCoverageStart };
+}
+
+export async function getFeePlan(studentId: string) {
+  return prisma.feePlan.findUnique({ where: { studentId } });
+}
+
+export async function listStudentFeeStatuses() {
+  const students = await prisma.student.findMany({
+    where: { deletedAt: null },
+    include: { feePlan: { include: { payments: true } } },
+    orderBy: { name: "asc" },
+  });
+
+  const today = new Date();
+  return students.map((student) => {
+    if (!student.feePlan) {
+      return {
+        studentId: student.id,
+        studentCode: student.studentCode,
+        name: student.name,
+        hasPlan: false as const,
+      };
+    }
+
+    const { periods, totalPending } = computeFeeHistory(
+      student.feePlan.dueDate,
+      student.feePlan.frequency,
+      student.feePlan.finalAmount,
+      student.feePlan.payments,
+      today
+    );
+    const currentPeriod = periods[periods.length - 1];
+
+    return {
+      studentId: student.id,
+      studentCode: student.studentCode,
+      name: student.name,
+      hasPlan: true as const,
+      status: currentPeriod?.status ?? ("DUE" as const),
+      totalPending,
+    };
+  });
+}
+
+export async function getPayment(paymentId: string) {
+  return prisma.payment.findUnique({
+    where: { id: paymentId },
+    include: { student: true, receipt: true, feePlan: true },
+  });
+}
+```
+
+- [ ] **Step 2: Verify it compiles**
+
+```bash
+npx tsc --noEmit
+```
+
+Expected: clean.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add -A
+git commit -m "Add fee queries: student fee history, plan lookup, fee status list
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+```
+
+---
+
+## Task 7: Fee actions (mutations)
+
+**Files:**
+- Create: `src/actions/fees.ts`
+
+- [ ] **Step 1: Write `src/actions/fees.ts`**
+
+```ts
+"use server";
+
+import { prisma } from "@/lib/db";
+import { generateReceiptNumber } from "@/lib/ids";
+import { feePlanSchema, type FeePlanInput } from "@/lib/validations/fee-plan";
+import { paymentSchema, type PaymentInput } from "@/lib/validations/payment";
+import { getCoverageStartForNewPayment } from "@/lib/fees/fee-history";
+import { computeCoverageRange } from "@/lib/fees/periods";
+import { revalidatePath } from "next/cache";
+
+export async function saveFeePlan(studentId: string, input: FeePlanInput) {
+  const data = feePlanSchema.parse(input);
+  const finalAmount = data.totalAmount - data.discount;
+
+  await prisma.feePlan.upsert({
+    where: { studentId },
+    create: {
+      studentId,
+      totalAmount: data.totalAmount,
+      frequency: data.frequency,
+      dueDate: data.dueDate,
+      discount: data.discount,
+      finalAmount,
+    },
+    update: {
+      totalAmount: data.totalAmount,
+      frequency: data.frequency,
+      dueDate: data.dueDate,
+      discount: data.discount,
+      finalAmount,
+    },
+  });
+
+  revalidatePath(`/students/${studentId}`);
+  revalidatePath("/fees");
+}
+
+export async function createPayment(studentId: string, input: PaymentInput) {
+  const data = paymentSchema.parse(input);
+
+  const plan = await prisma.feePlan.findUnique({
+    where: { studentId },
+    include: { payments: true },
+  });
+  if (!plan) {
+    throw new Error("This student doesn't have a fee plan set up yet.");
+  }
+
+  const today = new Date();
+  const coverageStartBase = getCoverageStartForNewPayment(
+    plan.dueDate,
+    plan.frequency,
+    plan.finalAmount,
+    plan.payments,
+    today
+  );
+  const { coverageStart, coverageEnd } = computeCoverageRange(coverageStartBase, data.periodsCovered, plan.frequency);
+  const receiptNumber = await generateReceiptNumber();
+
+  const payment = await prisma.payment.create({
+    data: {
+      studentId,
+      feePlanId: plan.id,
+      amount: data.amount,
+      paymentDate: data.paymentDate,
+      mode: data.mode,
+      coverageStart,
+      coverageEnd,
+      notes: data.notes || null,
+      receipt: { create: { receiptNumber } },
+    },
+    include: { receipt: true },
+  });
+
+  revalidatePath(`/students/${studentId}`);
+  revalidatePath("/fees");
+  revalidatePath("/dashboard");
+
+  return payment;
+}
+```
+
+- [ ] **Step 2: Verify it compiles**
+
+```bash
+npx tsc --noEmit
+```
+
+Expected: clean.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add -A
+git commit -m "Add fee plan and payment server actions
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+```
+
+---
+
+## Task 8: Fee Plan form dialog
+
+**Files:**
+- Create: `src/components/fees/fee-plan-form-dialog.tsx`
+
+- [ ] **Step 1: Write `src/components/fees/fee-plan-form-dialog.tsx`**
+
+Follow `src/components/classes/course-form-dialog.tsx`'s exact pattern (`useGuardedDialogOpenChange`, `showCloseButton={!submitting}`, `useEffect`+`reset()` re-seed, `onSuccess` callback, fields `disabled={submitting}`):
+
+```tsx
+"use client";
+
+import { useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { feePlanSchema, type FeePlanInput } from "@/lib/validations/fee-plan";
+import { saveFeePlan } from "@/actions/fees";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useGuardedDialogOpenChange } from "@/hooks/use-guarded-dialog";
+import { toast } from "sonner";
+
+type ExistingFeePlan = {
+  totalAmount: number;
+  frequency: FeePlanInput["frequency"];
+  dueDate: Date;
+  discount: number;
+};
+
+function defaultsFor(plan?: ExistingFeePlan): FeePlanInput {
+  return plan
+    ? { totalAmount: plan.totalAmount, frequency: plan.frequency, dueDate: plan.dueDate, discount: plan.discount }
+    : { totalAmount: 0, frequency: "MONTHLY", dueDate: new Date(), discount: 0 };
+}
+
+// <input type="date"> only accepts a "yyyy-MM-dd" string; a register()-based
+// uncontrolled input assigning a raw Date to its DOM .value gets rejected by
+// the browser, leaving the field blank. Same fix Phase 1's student-form.tsx
+// already applies to dob/joiningDate: make the field controlled via
+// watch()/setValue(), guarding against an invalid/absent Date so this never
+// throws on .toISOString().
+function toDateInputValue(value: unknown): string {
+  if (!value) return "";
+  const d = value instanceof Date ? value : new Date(value as string);
+  return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+}
+
+export function FeePlanFormDialog({
+  open,
+  onOpenChange,
+  studentId,
+  plan,
+  onSuccess,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  studentId: string;
+  plan?: ExistingFeePlan;
+  onSuccess?: () => void;
+}) {
+  const [submitting, setSubmitting] = useState(false);
+
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    reset,
+    formState: { errors },
+  } = useForm<FeePlanInput>({
+    resolver: zodResolver(feePlanSchema),
+    defaultValues: defaultsFor(plan),
+  });
+
+  useEffect(() => {
+    if (open) reset(defaultsFor(plan));
+  }, [open, plan, reset]);
+
+  const totalAmount = watch("totalAmount") || 0;
+  const discount = watch("discount") || 0;
+  const finalAmount = Math.max(totalAmount - discount, 0);
+
+  async function onSubmit(data: FeePlanInput) {
+    setSubmitting(true);
+    try {
+      await saveFeePlan(studentId, data);
+      toast.success(plan ? "Fee plan updated" : "Fee plan created");
+      onOpenChange(false);
+      onSuccess?.();
+    } catch {
+      toast.error("Something went wrong. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const handleOpenChange = useGuardedDialogOpenChange(submitting, onOpenChange);
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent showCloseButton={!submitting}>
+        <DialogHeader>
+          <DialogTitle>{plan ? "Edit Fee Plan" : "Set Up Fee Plan"}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="totalAmount">Total Fee Amount (₹)</Label>
+            <Input id="totalAmount" type="number" step="0.01" {...register("totalAmount")} disabled={submitting} />
+            {errors.totalAmount && <p className="text-sm text-danger">{errors.totalAmount.message}</p>}
+          </div>
+          <div className="space-y-2">
+            <Label>Frequency</Label>
+            <Select
+              value={watch("frequency")}
+              onValueChange={(v) => setValue("frequency", v as FeePlanInput["frequency"])}
+              disabled={submitting}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="MONTHLY">Monthly</SelectItem>
+                <SelectItem value="QUARTERLY">Quarterly</SelectItem>
+                <SelectItem value="YEARLY">Yearly</SelectItem>
+                <SelectItem value="CUSTOM">Custom (one-time)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="dueDate">Start Date</Label>
+            <Input
+              id="dueDate"
+              type="date"
+              value={toDateInputValue(watch("dueDate"))}
+              onChange={(e) =>
+                setValue("dueDate", (e.target.value || undefined) as unknown as Date, { shouldValidate: true })
+              }
+              disabled={submitting}
+            />
+            {errors.dueDate && <p className="text-sm text-danger">{String(errors.dueDate.message)}</p>}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="discount">Discount (₹)</Label>
+            <Input id="discount" type="number" step="0.01" {...register("discount")} disabled={submitting} />
+            {errors.discount && <p className="text-sm text-danger">{errors.discount.message}</p>}
+          </div>
+          <div className="glass-card p-3 text-sm text-muted">
+            Final Payable: <span className="text-gold">₹{finalAmount.toLocaleString("en-IN")}</span> per period
+          </div>
+          <Button type="submit" className="w-full" disabled={submitting}>
+            {submitting ? "Saving..." : "Save Fee Plan"}
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+```
+
+- [ ] **Step 2: Verify it compiles**
+
+```bash
+npx tsc --noEmit
+```
+
+Expected: clean (this component isn't wired into any page yet — Task 10 does that — so there's nothing to click through yet, just confirm no type errors).
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add -A
+git commit -m "Add fee plan form dialog
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+```
+
+---
+
+## Task 9: Add Payment dialog
+
+**Files:**
+- Create: `src/components/fees/add-payment-dialog.tsx`
+
+- [ ] **Step 1: Write `src/components/fees/add-payment-dialog.tsx`**
+
+```tsx
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { format } from "date-fns";
+import { paymentSchema, type PaymentInput } from "@/lib/validations/payment";
+import { computeCoverageRange } from "@/lib/fees/periods";
+import { createPayment } from "@/actions/fees";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useGuardedDialogOpenChange } from "@/hooks/use-guarded-dialog";
+import { toast } from "sonner";
+import type { FeeFrequency } from "@prisma/client";
+
+function defaults(): PaymentInput {
+  return { amount: 0, paymentDate: new Date(), mode: "CASH", periodsCovered: 1, notes: "" };
+}
+
+// Same controlled-date-field fix as fee-plan-form-dialog.tsx / Phase 1's
+// student-form.tsx: <input type="date"> rejects a raw Date assigned via
+// register(), so this must be controlled via watch()/setValue() with a
+// guarded ISO-string conversion.
+function toDateInputValue(value: unknown): string {
+  if (!value) return "";
+  const d = value instanceof Date ? value : new Date(value as string);
+  return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+}
+
+export function AddPaymentDialog({
+  open,
+  onOpenChange,
+  studentId,
+  frequency,
+  nextCoverageStart,
+  onSuccess,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  studentId: string;
+  frequency: FeeFrequency;
+  nextCoverageStart: Date;
+  onSuccess?: () => void;
+}) {
+  const [submitting, setSubmitting] = useState(false);
+
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    reset,
+    formState: { errors },
+  } = useForm<PaymentInput>({
+    resolver: zodResolver(paymentSchema),
+    defaultValues: defaults(),
+  });
+
+  useEffect(() => {
+    if (open) reset(defaults());
+  }, [open, reset]);
+
+  const periodsCovered = watch("periodsCovered") || 1;
+  const coveragePreview = useMemo(() => {
+    if (frequency === "CUSTOM") return "One-time fee";
+    const { coverageStart, coverageEnd } = computeCoverageRange(nextCoverageStart, periodsCovered, frequency);
+    const startLabel = format(coverageStart, "MMM yyyy");
+    const endLabel = format(coverageEnd, "MMM yyyy");
+    return startLabel === endLabel ? startLabel : `${startLabel} – ${endLabel}`;
+  }, [frequency, nextCoverageStart, periodsCovered]);
+
+  async function onSubmit(data: PaymentInput) {
+    setSubmitting(true);
+    try {
+      await createPayment(studentId, data);
+      toast.success("Payment recorded");
+      onOpenChange(false);
+      onSuccess?.();
+    } catch {
+      toast.error("Something went wrong. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const handleOpenChange = useGuardedDialogOpenChange(submitting, onOpenChange);
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent showCloseButton={!submitting}>
+        <DialogHeader>
+          <DialogTitle>Add Payment</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="amount">Amount (₹)</Label>
+            <Input id="amount" type="number" step="0.01" {...register("amount")} disabled={submitting} />
+            {errors.amount && <p className="text-sm text-danger">{errors.amount.message}</p>}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="paymentDate">Payment Date</Label>
+            <Input
+              id="paymentDate"
+              type="date"
+              value={toDateInputValue(watch("paymentDate"))}
+              onChange={(e) =>
+                setValue("paymentDate", (e.target.value || undefined) as unknown as Date, { shouldValidate: true })
+              }
+              disabled={submitting}
+            />
+            {errors.paymentDate && <p className="text-sm text-danger">{String(errors.paymentDate.message)}</p>}
+          </div>
+          <div className="space-y-2">
+            <Label>Payment Mode</Label>
+            <Select
+              value={watch("mode")}
+              onValueChange={(v) => setValue("mode", v as PaymentInput["mode"])}
+              disabled={submitting}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="CASH">Cash</SelectItem>
+                <SelectItem value="UPI">UPI</SelectItem>
+                <SelectItem value="ONLINE">Online Payment</SelectItem>
+                <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {frequency !== "CUSTOM" && (
+            <div className="space-y-2">
+              <Label htmlFor="periodsCovered">Periods Covered</Label>
+              <Input
+                id="periodsCovered"
+                type="number"
+                min={1}
+                {...register("periodsCovered")}
+                disabled={submitting}
+              />
+              {errors.periodsCovered && <p className="text-sm text-danger">{errors.periodsCovered.message}</p>}
+            </div>
+          )}
+          <div className="glass-card p-3 text-sm text-muted">
+            This will cover: <span className="text-gold">{coveragePreview}</span>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="notes">Notes</Label>
+            <Textarea id="notes" {...register("notes")} disabled={submitting} />
+          </div>
+          <Button type="submit" className="w-full" disabled={submitting}>
+            {submitting ? "Saving..." : "Add Payment"}
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+```
+
+- [ ] **Step 2: Verify it compiles**
+
+```bash
+npx tsc --noEmit
+```
+
+Expected: clean.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add -A
+git commit -m "Add payment recording dialog with live coverage preview
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+```
+
+---
+
+## Task 10: Fee history table + Student Fees tab
+
+**Files:**
+- Create: `src/components/fees/fee-history-table.tsx`
+- Create: `src/components/students/student-fees-tab.tsx`
+- Modify: `src/app/(app)/students/[id]/page.tsx`
+
+- [ ] **Step 1: Write `src/components/fees/fee-history-table.tsx`**
+
+```tsx
+"use client";
+
+import { format } from "date-fns";
+import { Badge } from "@/components/ui/badge";
+import type { PeriodWithStatus, PeriodStatus } from "@/lib/fees/fee-history";
+import { Decimal } from "@prisma/client/runtime/library";
+
+const STATUS_COLORS: Record<PeriodStatus, string> = {
+  PAID: "border-success text-success",
+  PARTIAL: "border-warning text-warning",
+  DUE: "border-muted text-muted",
+  OVERDUE: "border-danger text-danger",
+};
+
+function formatPeriodLabel(period: PeriodWithStatus): string {
+  const startLabel = format(period.start, "MMM yyyy");
+  const endLabel = format(period.end, "MMM yyyy");
+  return startLabel === endLabel ? startLabel : `${startLabel} – ${endLabel}`;
+}
+
+export function FeeHistoryTable({
+  periods,
+  totalPaid,
+  totalPending,
+}: {
+  periods: PeriodWithStatus[];
+  totalPaid: Decimal;
+  totalPending: Decimal;
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="glass-card overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-card-border text-left text-muted">
+              <th className="p-3 font-medium">Period</th>
+              <th className="p-3 font-medium">Amount Due</th>
+              <th className="p-3 font-medium">Amount Paid</th>
+              <th className="p-3 font-medium">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {periods.map((period) => (
+              <tr key={period.index} className="border-b border-card-border last:border-0">
+                <td className="p-3 text-foreground">{formatPeriodLabel(period)}</td>
+                <td className="p-3 text-muted">₹{period.amountDue.toNumber().toLocaleString("en-IN")}</td>
+                <td className="p-3 text-muted">₹{period.amountPaid.toNumber().toLocaleString("en-IN")}</td>
+                <td className="p-3">
+                  <Badge variant="outline" className={STATUS_COLORS[period.status]}>
+                    {period.status}
+                  </Badge>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex gap-6 text-sm">
+        <p className="text-muted">
+          Total Paid: <span className="text-success">₹{totalPaid.toNumber().toLocaleString("en-IN")}</span>
+        </p>
+        <p className="text-muted">
+          Total Pending: <span className="text-danger">₹{totalPending.toNumber().toLocaleString("en-IN")}</span>
+        </p>
+      </div>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 2: Write `src/components/students/student-fees-tab.tsx`**
+
+This is the `"use client"` piece that owns the Fee Plan and Add Payment dialogs' open state, receiving already-computed data as props (Server Component fetch happens in `page.tsx`, Step 3 below):
+
+```tsx
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Wallet, Plus, Pencil } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/shared/empty-state";
+import { FeeHistoryTable } from "@/components/fees/fee-history-table";
+import { FeePlanFormDialog } from "@/components/fees/fee-plan-form-dialog";
+import { AddPaymentDialog } from "@/components/fees/add-payment-dialog";
+import type { getStudentFeeHistory } from "@/lib/queries/fees";
+
+type FeeHistory = Awaited<ReturnType<typeof getStudentFeeHistory>>;
+
+export function StudentFeesTab({ studentId, feeHistory }: { studentId: string; feeHistory: FeeHistory }) {
+  const router = useRouter();
+  const [planDialogOpen, setPlanDialogOpen] = useState(false);
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+
+  if (!feeHistory) {
+    return (
+      <div className="space-y-4">
+        <EmptyState
+          icon={Wallet}
+          title="No fee plan set up yet."
+          actionLabel="+ Set Up Fee Plan"
+          onAction={() => setPlanDialogOpen(true)}
+        />
+        <FeePlanFormDialog
+          open={planDialogOpen}
+          onOpenChange={setPlanDialogOpen}
+          studentId={studentId}
+          onSuccess={() => router.refresh()}
+        />
+      </div>
+    );
+  }
+
+  const { plan, periods, totalPaid, totalPending, nextCoverageStart } = feeHistory;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted">
+          ₹{plan.finalAmount.toNumber().toLocaleString("en-IN")} / {plan.frequency.toLowerCase()}
+          {plan.discount.toNumber() > 0 && ` (₹${plan.discount.toNumber().toLocaleString("en-IN")} discount applied)`}
+        </p>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setPlanDialogOpen(true)}>
+            <Pencil size={16} className="mr-2" />
+            Edit Plan
+          </Button>
+          <Button onClick={() => setPaymentDialogOpen(true)}>
+            <Plus size={16} className="mr-2" />
+            Add Payment
+          </Button>
+        </div>
+      </div>
+
+      <FeeHistoryTable periods={periods} totalPaid={totalPaid} totalPending={totalPending} />
+
+      <FeePlanFormDialog
+        open={planDialogOpen}
+        onOpenChange={setPlanDialogOpen}
+        studentId={studentId}
+        plan={{
+          totalAmount: plan.totalAmount.toNumber(),
+          frequency: plan.frequency,
+          dueDate: plan.dueDate,
+          discount: plan.discount.toNumber(),
+        }}
+        onSuccess={() => router.refresh()}
+      />
+      <AddPaymentDialog
+        open={paymentDialogOpen}
+        onOpenChange={setPaymentDialogOpen}
+        studentId={studentId}
+        frequency={plan.frequency}
+        nextCoverageStart={nextCoverageStart}
+        onSuccess={() => router.refresh()}
+      />
+    </div>
+  );
+}
+```
+
+- [ ] **Step 3: Modify `src/app/(app)/students/[id]/page.tsx`**
+
+This is the exact current file (from Phase 1 Task 19) and the exact changes to make — three edits, shown as find-and-replace pairs:
+
+**Edit 1 — add two imports** after the existing `import { format } from "date-fns";` line:
+```ts
+import { getStudentFeeHistory } from "@/lib/queries/fees";
+import { StudentFeesTab } from "@/components/students/student-fees-tab";
+```
+
+**Edit 2 — fetch fee history alongside the student, in parallel.** Replace:
+```ts
+  const { id } = await params;
+  const student = await getStudent(id);
+  if (!student) notFound();
+```
+with:
+```ts
+  const { id } = await params;
+  const [student, feeHistory] = await Promise.all([getStudent(id), getStudentFeeHistory(id)]);
+  if (!student) notFound();
+```
+
+**Edit 3 — replace the Fees tab's stub content.** Replace:
+```tsx
+        <TabsContent value="fees">
+          <ComingSoon label="Fee" />
+        </TabsContent>
+```
+with:
+```tsx
+        <TabsContent value="fees">
+          <StudentFeesTab studentId={student.id} feeHistory={feeHistory} />
+        </TabsContent>
+```
+
+Leave everything else in the file (the `ComingSoon` component itself, still used by the Attendance/Notes/Journey tabs; the Overview and Classes tab content) untouched.
+
+- [ ] **Step 4: Verify manually**
+
+```bash
+npm run dev
+```
+
+Log in as the seeded admin (read credentials from `.env`, don't print them — this is our own test account). Create a temporary test student. Open their profile, go to the Fees tab, confirm the empty state shows. Click "+ Set Up Fee Plan", fill in a Monthly plan (e.g. ₹1,500, start date a few months in the past to get multiple periods), save. Confirm the fee history table renders with the expected number of periods, correct Overdue/Due statuses (nothing paid yet). Click "Add Payment", confirm the coverage preview updates live as you change "Periods Covered", submit a payment for 1 period with less than the full amount (test PARTIAL), submit another payment for 2 periods with the exact full amount (test PAID + waterfall across the remaining unpaid period from before). Confirm the table updates correctly after each payment (via `router.refresh()`), and Total Paid/Total Pending look right. Clean up the test student afterward (delete its Enrollment first, then the Student — Payment/FeePlan/Receipt records need explicit deletion too since Payment/FeePlan don't cascade from Student; delete Payment+Receipt rows, then FeePlan, then Enrollment, then Student, in that dependency order). Confirm the DB is back to its pre-test state (0 students, 0 fee plans, 0 payments, 0 receipts). Stop the server.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add -A
+git commit -m "Wire fee plan setup and payment recording into the student profile
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+```
+
+---
+
+## Task 11: Top-level Fees page
+
+**Files:**
+- Create: `src/components/fees/fees-list.tsx`
+- Modify: `src/app/(app)/fees/page.tsx`
+
+- [ ] **Step 1: Write `src/components/fees/fees-list.tsx`**
+
+```tsx
+"use client";
+
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import { Wallet } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { EmptyState } from "@/components/shared/empty-state";
+import type { listStudentFeeStatuses } from "@/lib/queries/fees";
+import type { PeriodStatus } from "@/lib/fees/fee-history";
+
+type StudentFeeStatus = Awaited<ReturnType<typeof listStudentFeeStatuses>>[number];
+
+const STATUS_COLORS: Record<PeriodStatus, string> = {
+  PAID: "border-success text-success",
+  PARTIAL: "border-warning text-warning",
+  DUE: "border-muted text-muted",
+  OVERDUE: "border-danger text-danger",
+};
+
+export function FeesList({ students }: { students: StudentFeeStatus[] }) {
+  const [statusFilter, setStatusFilter] = useState<PeriodStatus | "ALL">("ALL");
+
+  const filtered = useMemo(() => {
+    if (statusFilter === "ALL") return students;
+    return students.filter((s) => s.hasPlan && s.status === statusFilter);
+  }, [students, statusFilter]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold text-foreground">Fees</h1>
+        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as PeriodStatus | "ALL")}>
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">All statuses</SelectItem>
+            <SelectItem value="PAID">Paid</SelectItem>
+            <SelectItem value="PARTIAL">Partial</SelectItem>
+            <SelectItem value="DUE">Due</SelectItem>
+            <SelectItem value="OVERDUE">Overdue</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {filtered.length === 0 ? (
+        <EmptyState
+          icon={Wallet}
+          title={students.length === 0 ? "No students yet." : "No students match this filter."}
+        />
+      ) : (
+        <div className="glass-card divide-y divide-card-border">
+          {filtered.map((student) => (
+            <Link
+              key={student.studentId}
+              href={`/students/${student.studentId}`}
+              className="flex items-center justify-between gap-4 p-4 hover:bg-card"
+            >
+              <div>
+                <p className="font-medium text-foreground">{student.name}</p>
+                <p className="text-sm text-muted">{student.studentCode}</p>
+              </div>
+              {student.hasPlan ? (
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-muted">
+                    ₹{student.totalPending.toNumber().toLocaleString("en-IN")} pending
+                  </span>
+                  <Badge variant="outline" className={STATUS_COLORS[student.status]}>
+                    {student.status}
+                  </Badge>
+                </div>
+              ) : (
+                <Badge variant="outline" className="border-muted text-muted">
+                  No plan
+                </Badge>
+              )}
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+- [ ] **Step 2: Rewrite `src/app/(app)/fees/page.tsx`**
+
+Replace the Phase 1 `PhaseStub` placeholder entirely:
+
+```tsx
+import { listStudentFeeStatuses } from "@/lib/queries/fees";
+import { FeesList } from "@/components/fees/fees-list";
+
+export default async function FeesPage() {
+  const students = await listStudentFeeStatuses();
+  return <FeesList students={students} />;
+}
+```
+
+- [ ] **Step 3: Verify manually**
+
+```bash
+npm run dev
+```
+
+Log in, navigate to Fees. Confirm students with no fee plan show "No plan", and (using the test student from Task 10, if you re-create one) a student with a plan shows their correct status/pending amount. Confirm the status filter works. Clean up any test data created. Stop the server.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add -A
+git commit -m "Add top-level Fees page with status filtering
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+```
+
+---
+
+## Task 12: Digital receipt page
+
+**Files:**
+- Create: `src/app/receipts/[paymentId]/page.tsx`
+- Create: `src/components/fees/receipt-actions.tsx`
+
+Note this route lives OUTSIDE the `(app)` route group (a sibling of `src/app/login/`, not under `src/app/(app)/`) so it renders without the sidebar/header chrome — the receipt must be a clean, printable page on its own, not wrapped in `AppShell`. It does its own auth check directly (same pattern as `src/app/(app)/layout.tsx`, just inlined here since there's no shared layout to put it in).
+
+- [ ] **Step 1: Write `src/components/fees/receipt-actions.tsx`**
+
+```tsx
+"use client";
+
+import { Button } from "@/components/ui/button";
+import { Printer, Share2 } from "lucide-react";
+
+export function ReceiptActions({
+  studentMobile,
+  shareMessage,
+}: {
+  studentMobile: string;
+  shareMessage: string;
+}) {
+  function handlePrint() {
+    window.print();
+  }
+
+  function handleShare() {
+    const url = `https://wa.me/91${studentMobile}?text=${encodeURIComponent(shareMessage)}`;
+    window.open(url, "_blank");
+  }
+
+  return (
+    <div className="flex justify-center gap-3 print:hidden">
+      <Button variant="outline" onClick={handlePrint}>
+        <Printer size={16} className="mr-2" />
+        Print / Download PDF
+      </Button>
+      <Button variant="outline" onClick={handleShare}>
+        <Share2 size={16} className="mr-2" />
+        Share via WhatsApp
+      </Button>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 2: Write `src/app/receipts/[paymentId]/page.tsx`**
+
+```tsx
+import { headers } from "next/headers";
+import { notFound, redirect } from "next/navigation";
+import { format } from "date-fns";
+import { auth } from "@/lib/auth";
+import { getPayment } from "@/lib/queries/fees";
+import { ReceiptActions } from "@/components/fees/receipt-actions";
+
+const MODE_LABELS: Record<string, string> = {
+  CASH: "Cash",
+  UPI: "UPI",
+  ONLINE: "Online Payment",
+  BANK_TRANSFER: "Bank Transfer",
+};
+
+export default async function ReceiptPage({
+  params,
+}: {
+  params: Promise<{ paymentId: string }>;
+}) {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session) redirect("/login");
+
+  const { paymentId } = await params;
+  const payment = await getPayment(paymentId);
+  if (!payment || !payment.receipt) notFound();
+
+  const startLabel = format(payment.coverageStart, "MMM yyyy");
+  const endLabel = format(payment.coverageEnd, "MMM yyyy");
+  const periodLabel = startLabel === endLabel ? startLabel : `${startLabel} – ${endLabel}`;
+  const amountLabel = payment.amount.toNumber().toLocaleString("en-IN");
+
+  const shareMessage = [
+    "SAINTS – Fee Receipt",
+    `Receipt No: ${payment.receipt.receiptNumber}`,
+    `Student: ${payment.student.name}`,
+    `Amount: ₹${amountLabel}`,
+    `For: ${periodLabel}`,
+    `Paid via ${MODE_LABELS[payment.mode]} on ${format(payment.paymentDate, "dd MMM yyyy")}`,
+    "Thank you!",
+  ].join("\n");
+
+  return (
+    <main className="flex min-h-screen items-center justify-center p-4">
+      <div className="glass-card w-full max-w-md space-y-6 p-8 print:border-none print:bg-white print:text-black">
+        <div className="text-center">
+          <p className="text-lg font-semibold text-gold print:text-black">SAINTS</p>
+          <p className="text-sm text-muted">Dance • Zumba • Movement • Self Knowledge</p>
+          <div className="gold-divider my-3" />
+          <p className="font-medium text-foreground print:text-black">FEE RECEIPT</p>
+        </div>
+
+        <div className="space-y-2 text-sm">
+          <div className="flex justify-between">
+            <span className="text-muted">Student</span>
+            <span className="text-foreground print:text-black">{payment.student.name}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted">Receipt No</span>
+            <span className="text-foreground print:text-black">{payment.receipt.receiptNumber}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted">Amount</span>
+            <span className="text-foreground print:text-black">₹{amountLabel}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted">For</span>
+            <span className="text-foreground print:text-black">{periodLabel}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted">Payment Mode</span>
+            <span className="text-foreground print:text-black">{MODE_LABELS[payment.mode]}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted">Date</span>
+            <span className="text-foreground print:text-black">{format(payment.paymentDate, "dd MMM yyyy")}</span>
+          </div>
+        </div>
+
+        <p className="text-center text-sm text-muted">Thank You</p>
+
+        <ReceiptActions studentMobile={payment.student.mobile} shareMessage={shareMessage} />
+      </div>
+    </main>
+  );
+}
+```
+
+- [ ] **Step 3: Verify manually**
+
+```bash
+npm run dev
+```
+
+Log in, create a temporary test student with a fee plan and a payment (via the UI, as in Task 10), then navigate directly to `/receipts/<paymentId>` (get the payment id from a read-only DB query, or add a temporary "View Receipt" link on the fee history table row to click through — either is fine for this manual check; a real "View Receipt" link is optional polish, not required by this task). Confirm the receipt renders correctly with all fields, confirm clicking "Print / Download PDF" opens the browser's print dialog, confirm "Share via WhatsApp" opens a new tab to a `wa.me` URL with the correct pre-filled message (you don't need an actual WhatsApp account to verify this — just confirm the URL and query param look right). Clean up all test data afterward. Stop the server.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add -A
+git commit -m "Add printable digital receipt page with print and WhatsApp share
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+```
+
+---
+
+## Task 13: Final verification and wrap-up
+
+**Files:** none (verification only)
+
+- [ ] **Step 1: Full regression pass**
+
+```bash
+npx vitest run
+```
+
+Expected: every test passes (Phase 1's 26 plus this phase's new period/allocation/fee-history/fee-plan-validation tests).
+
+```bash
+npx tsc --noEmit
+npx eslint .
+```
+
+Expected: clean, or matching whatever pre-existing baseline was established at the end of Phase 1 (check `docs/superpowers/plans/2026-09-04-phase1-foundation.md`'s final state for the known baseline count) — confirm no NEW errors/warnings from this phase's files.
+
+```bash
+npx next build
+```
+
+Expected: clean, `/fees`, `/students/[id]` (still), and `/receipts/[paymentId]` all present in the route table.
+
+- [ ] **Step 2: End-to-end manual walkthrough**
+
+Log in, create one temporary test student. Set up a Monthly fee plan starting a few months back. Record a partial payment for the oldest period, then a multi-period payment covering the rest plus one period ahead. Confirm: the Fees tab's history table shows the right statuses top to bottom (Paid/Paid/Partial-then-topped-up-to-Paid/etc., whatever the specific sequence produces), the top-level Fees page shows this student with the correct aggregate status, the Dashboard's "This Month Collection" and "Pending Fees" cards now show non-zero real numbers (assuming at least one payment's `paymentDate` falls in the current calendar month), and the receipt page for the multi-period payment shows the correct date range. Clean up all test data (Payment/Receipt rows, FeePlan, Enrollment, then Student, in that order) and confirm the DB is back to 0 students / 0 fee plans / 0 payments / 0 receipts / the original 3 courses / 2 instructors / 3 batches.
+
+- [ ] **Step 3: Update the Phase 1 plan doc's dashboard follow-up note if now resolved**
+
+Phase 1's plan doc (`docs/superpowers/plans/2026-09-04-phase1-foundation.md`) has a "Known follow-ups for later phases" section flagging that the dashboard's date-range queries aren't timezone-aware. This phase doesn't need to fix that (it's optional, low-priority, and affects `src/lib/queries/dashboard.ts`, not this phase's files) — just confirm during Step 2's walkthrough whether the "This Month Collection" number looks sane for a payment made "today" in your local testing, and leave a note in this plan (below) if you noticed anything timezone-related worth flagging for Phase 3+.
+
+- [ ] **Step 4: Final commit**
+
+```bash
+git add -A
+git commit -m "Phase 2 (Fees & Payments) complete: manual verification pass
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+```
+
+---
+
+## Post-plan check
+
+At the end of this plan: admins can set up a fee plan per student, record payments (single or multi-period), see live-computed fee history with correct Paid/Partial/Due/Overdue statuses, and generate a printable/WhatsApp-shareable digital receipt per payment. The Dashboard's Collection/Pending Fees cards show real data for the first time. Fee Reminders (Phase 4) and Reports (Phase 5) are the next phases, both building on this phase's `computeFeeHistory`/period-status logic rather than duplicating it.
