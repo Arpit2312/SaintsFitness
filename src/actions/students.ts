@@ -56,6 +56,17 @@ export async function createStudent(input: StudentInput, photoUrl?: string) {
 export async function updateStudent(id: string, input: StudentInput, photoUrl?: string) {
   const data = studentSchema.parse(input);
 
+  // The Batch <Select> on the edit form lets an admin reassign the student
+  // to a different batch, but enrollments live in a separate join table
+  // (Enrollment) rather than as a plain column on Student. Only touch the
+  // enrollment when the batch actually changed -- an unconditional
+  // delete+recreate on every save would reset joiningBatchDate for a no-op
+  // edit. Nested inside the single student.update() call below (rather than
+  // a separate prisma.$transaction) so the delete+create pair stays atomic
+  // for free, same reasoning as createStudent's single nested create.
+  const currentEnrollment = await prisma.enrollment.findFirst({ where: { studentId: id } });
+  const batchChanged = !currentEnrollment || currentEnrollment.batchId !== data.batchId;
+
   const addressData = {
     houseStreet: data.houseStreet,
     area: data.area,
@@ -88,6 +99,9 @@ export async function updateStudent(id: string, input: StudentInput, photoUrl?: 
       address: { upsert: { create: addressData, update: addressData } },
       emergencyContact: { upsert: { create: emergencyContactData, update: emergencyContactData } },
       parentDetails: { upsert: { create: parentDetailsData, update: parentDetailsData } },
+      ...(batchChanged
+        ? { enrollments: { deleteMany: {}, create: { batchId: data.batchId } } }
+        : {}),
     },
   });
 
