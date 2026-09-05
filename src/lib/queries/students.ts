@@ -33,7 +33,12 @@ export async function listStudents(filters: StudentFilters = {}) {
         : {}),
     },
     include: {
-      enrollments: { include: { batch: true } },
+      // The schema allows a student to have more than one enrollment
+      // (@@unique is on [studentId, batchId], not studentId alone) even
+      // though every current write path converges to at most one — order
+      // explicitly so "the first enrollment" is deterministic if that
+      // ever changes, rather than depending on unspecified SQL row order.
+      enrollments: { include: { batch: true }, orderBy: { joiningBatchDate: "desc" } },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -46,7 +51,10 @@ export async function getStudent(id: string) {
       address: true,
       emergencyContact: true,
       parentDetails: true,
-      enrollments: { include: { batch: { include: { course: true, instructor: true } } } },
+      enrollments: {
+        include: { batch: { include: { course: true, instructor: true } } },
+        orderBy: { joiningBatchDate: "desc" },
+      },
     },
   });
 }
