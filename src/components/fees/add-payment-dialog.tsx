@@ -69,7 +69,12 @@ export function AddPaymentDialog({
     if (open) reset(defaults());
   }, [open, reset]);
 
-  const periodsCovered = watch("periodsCovered") || 1;
+  // watch() returns the raw (unregistered-as-number) DOM input value until
+  // submit-time zod coercion runs. Number(...) makes the conversion explicit
+  // (matching fee-plan-form-dialog.tsx's convention) -- without it, a typed
+  // "0" is a truthy string that bypasses the `|| 1` fallback and produces a
+  // backwards coverage range (0 months added, i.e. end before start).
+  const periodsCovered = Number(watch("periodsCovered")) || 1;
   const coveragePreview = useMemo(() => {
     if (frequency === "CUSTOM") return "One-time fee";
     const { coverageStart, coverageEnd } = computeCoverageRange(nextCoverageStart, periodsCovered, frequency);
