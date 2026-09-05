@@ -4076,7 +4076,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 23: Deploy to Vercel
+## Task 23: Deploy to Vercel ✅ DONE (2026-09-05) — pushed to https://github.com/Arpit2312/SaintsFitness (force-pushed over the repo's initial placeholder commit, user-confirmed), deployed via Vercel dashboard import to https://saintsfitness.vercel.app. Hit one real issue: production login initially failed with a 403 "INVALID_ORIGIN" from Better Auth — BETTER_AUTH_URL in Vercel's env vars didn't match the deployed origin. Fixed by setting it to the exact production URL and redeploying. Verified end-to-end in a live browser: login, dashboard (real stats, Today's Classes: 3), Classes & Batches (3 seeded courses), Students (correct empty state, 0 students), logout all work correctly against the live Neon database (same DB used throughout local development, already seeded — no separate production seed run was needed).
 
 **Files:**
 - Create: `.github` (none required — deploying via Vercel CLI/dashboard, not CI)
