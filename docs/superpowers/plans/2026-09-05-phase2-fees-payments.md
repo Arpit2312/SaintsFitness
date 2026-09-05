@@ -525,6 +525,8 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 - Create: `src/lib/fees/fee-history.ts`
 - Create: `tests/unit/fee-history.test.ts`
 
+**Dependency note:** `periods.ts` (Task 2) now exports its UTC-safe `startOfMonth` (alongside `endOfMonth`/`addMonths`). This task's `getCoverageStartForNewPayment` fallback branch must import `startOfMonth` from `./periods`, not from `date-fns` directly -- date-fns's version operates in local time and would reintroduce the exact bug Task 2 fixed.
+
 This composes Tasks 2 and 3 into the two functions the rest of the app actually calls: `computeFeeHistory` (for display) and `getCoverageStartForNewPayment` (for the Add Payment form's default coverage start).
 
 - [ ] **Step 1: Write the failing tests in `tests/unit/fee-history.test.ts`**
@@ -654,8 +656,14 @@ Expected: FAIL — `Cannot find module '@/lib/fees/fee-history'`.
 ```ts
 import { Decimal } from "@prisma/client/runtime/library";
 import type { FeeFrequency } from "@prisma/client";
-import { startOfMonth } from "date-fns";
-import { enumeratePeriods, calculatePeriodStatus, advancePeriodStart, type Period, type PeriodStatus } from "./periods";
+import {
+  enumeratePeriods,
+  calculatePeriodStatus,
+  advancePeriodStart,
+  startOfMonth,
+  type Period,
+  type PeriodStatus,
+} from "./periods";
 import { waterfallAllocate } from "./allocation";
 
 // Re-exported so consumers (fee-history-table.tsx, fees-list.tsx) can import
@@ -1288,9 +1296,8 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { format } from "date-fns";
 import { paymentSchema, type PaymentInput } from "@/lib/validations/payment";
-import { computeCoverageRange } from "@/lib/fees/periods";
+import { computeCoverageRange, formatMonthYear } from "@/lib/fees/periods";
 import { createPayment } from "@/actions/fees";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1359,8 +1366,8 @@ export function AddPaymentDialog({
   const coveragePreview = useMemo(() => {
     if (frequency === "CUSTOM") return "One-time fee";
     const { coverageStart, coverageEnd } = computeCoverageRange(nextCoverageStart, periodsCovered, frequency);
-    const startLabel = format(coverageStart, "MMM yyyy");
-    const endLabel = format(coverageEnd, "MMM yyyy");
+    const startLabel = formatMonthYear(coverageStart);
+    const endLabel = formatMonthYear(coverageEnd);
     return startLabel === endLabel ? startLabel : `${startLabel} – ${endLabel}`;
   }, [frequency, nextCoverageStart, periodsCovered]);
 
@@ -1484,9 +1491,9 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 ```tsx
 "use client";
 
-import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import type { PeriodWithStatus, PeriodStatus } from "@/lib/fees/fee-history";
+import { formatMonthYear } from "@/lib/fees/periods";
 import { Decimal } from "@prisma/client/runtime/library";
 
 const STATUS_COLORS: Record<PeriodStatus, string> = {
@@ -1497,8 +1504,8 @@ const STATUS_COLORS: Record<PeriodStatus, string> = {
 };
 
 function formatPeriodLabel(period: PeriodWithStatus): string {
-  const startLabel = format(period.start, "MMM yyyy");
-  const endLabel = format(period.end, "MMM yyyy");
+  const startLabel = formatMonthYear(period.start);
+  const endLabel = formatMonthYear(period.end);
   return startLabel === endLabel ? startLabel : `${startLabel} – ${endLabel}`;
 }
 
@@ -1889,6 +1896,7 @@ import { notFound, redirect } from "next/navigation";
 import { format } from "date-fns";
 import { auth } from "@/lib/auth";
 import { getPayment } from "@/lib/queries/fees";
+import { formatMonthYear } from "@/lib/fees/periods";
 import { ReceiptActions } from "@/components/fees/receipt-actions";
 
 const MODE_LABELS: Record<string, string> = {
@@ -1910,8 +1918,8 @@ export default async function ReceiptPage({
   const payment = await getPayment(paymentId);
   if (!payment || !payment.receipt) notFound();
 
-  const startLabel = format(payment.coverageStart, "MMM yyyy");
-  const endLabel = format(payment.coverageEnd, "MMM yyyy");
+  const startLabel = formatMonthYear(payment.coverageStart);
+  const endLabel = formatMonthYear(payment.coverageEnd);
   const periodLabel = startLabel === endLabel ? startLabel : `${startLabel} – ${endLabel}`;
   const amountLabel = payment.amount.toNumber().toLocaleString("en-IN");
 
