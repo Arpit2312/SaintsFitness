@@ -1531,12 +1531,12 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 9: Add Payment dialog
+## Task 9: Add Payment dialog ✅ DONE (commit d9d908f, fixed in 23d4647 -- review found `watch("periodsCovered") || 1` was a real bug, not just a robustness nit like Task 8's analogous case: a typed "0" is a truthy string that bypasses the `|| 1` fallback, producing a backwards coverage-preview range; fixed with `Number(watch(...)) || 1`, matching the convention established in Task 8's fee-plan-form-dialog.tsx)
 
 **Files:**
 - Create: `src/components/fees/add-payment-dialog.tsx`
 
-- [ ] **Step 1: Write `src/components/fees/add-payment-dialog.tsx`**
+- [x] **Step 1: Write `src/components/fees/add-payment-dialog.tsx`**
 
 ```tsx
 "use client";
@@ -1610,7 +1610,12 @@ export function AddPaymentDialog({
     if (open) reset(defaults());
   }, [open, reset]);
 
-  const periodsCovered = watch("periodsCovered") || 1;
+  // watch() returns the raw (unregistered-as-number) DOM input value until
+  // submit-time zod coercion runs. Number(...) makes the conversion explicit
+  // (matching fee-plan-form-dialog.tsx's convention) -- without it, a typed
+  // "0" is a truthy string that bypasses the `|| 1` fallback and produces a
+  // backwards coverage range (0 months added, i.e. end before start).
+  const periodsCovered = Number(watch("periodsCovered")) || 1;
   const coveragePreview = useMemo(() => {
     if (frequency === "CUSTOM") return "One-time fee";
     const { coverageStart, coverageEnd } = computeCoverageRange(nextCoverageStart, periodsCovered, frequency);
@@ -1709,7 +1714,7 @@ export function AddPaymentDialog({
 }
 ```
 
-- [ ] **Step 2: Verify it compiles**
+- [x] **Step 2: Verify it compiles**
 
 ```bash
 npx tsc --noEmit
@@ -1717,7 +1722,7 @@ npx tsc --noEmit
 
 Expected: clean.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add -A
