@@ -3646,7 +3646,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 20: Dashboard
+## Task 20: Dashboard ✅ DONE (commit 0f0895e, fixed a real bug in 954ef47 — "This Month Collection" was querying today's range not the month's, inherited from this plan's own snippet, unobservable until Phase 2 adds real payments; see "Known follow-ups for later phases" at the end of this doc for this and a related timezone note)
 
 **IMPORTANT — read/write file split: `getDashboardStats` is a pure read and belongs in `src/lib/queries/dashboard.ts`, not `src/actions/dashboard.ts`.** The Step 1 snippet below already correctly omits `"use server"` (there are no mutations in this file), but it was written before the `src/lib/queries/` convention existed and puts a read-only file under `src/actions/`, which is exactly the naming confusion this refactor is meant to eliminate (the directory name should tell you what the file is without reading its contents). Name the file `src/lib/queries/dashboard.ts` and add `import "server-only";` at the top, same as `src/lib/queries/courses.ts`.
 
@@ -4123,6 +4123,11 @@ git push
 ```
 
 ---
+
+## Known follow-ups for later phases
+
+- **Dashboard date-range queries aren't timezone-aware** (`src/lib/queries/dashboard.ts`): `startOfMonth`/`endOfMonth`/`startOfDay`/`endOfDay` all use server-local time, not IST. This project already has a working pattern for this exact problem (`currentHourInIST()` in `src/components/layout/header.tsx`, pinned via `Intl.DateTimeFormat` + `Asia/Kolkata`). Currently unobservable since `Payment`/`Attendance` are empty in Phase 1 — but once Phase 2 (Fees) and Phase 3 (Attendance) start writing real timestamps, a payment or attendance mark made late at night IST (server midnight-to-~5:30am UTC-lag window) could land under the wrong day/month on the dashboard if a server not running in IST is used. Apply the same IST-pinning helper to these boundaries when building Phase 2/3, rather than fixing it speculatively now against tables that don't have real data yet.
+- **"Today's Classes" counts ALL active batches, not batches scheduled today.** The `Batch.days: String[]` field (e.g. `["Mon","Wed","Fri"]`) isn't consulted — `getDashboardStats()`'s `todaysBatchCount` is just `batch.count({ where: { deletedAt: null } })`. Unlike the Fees/Attendance cards, this one carries no "Starts tracking..." caveat, so it currently overpromises what it measures. Worth revisiting if "Today's Classes" is meant to reflect actual day-of-week scheduling.
 
 ## Post-plan check
 
