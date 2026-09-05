@@ -13,19 +13,38 @@ import { Decimal } from "@prisma/client/runtime/library";
  * Date("2026-06-01"), 1))` comes back as `2026-06-30T18:30:00.000Z`
  * instead of `2026-07-01`. Doing the month math in UTC directly keeps
  * period boundaries stable regardless of server timezone.
+ *
+ * Invariant: `date` must already be a start-of-month date. Unlike date-fns's
+ * real `addMonths`, this does not clamp day-of-month overflow to the last day
+ * of the target month -- it's only exercised here against day-1 inputs, so
+ * that clamping behavior was never needed.
  */
-function addMonths(date: Date, months: number): Date {
+export function addMonths(date: Date, months: number): Date {
   const d = new Date(date.getTime());
   d.setUTCMonth(d.getUTCMonth() + months);
   return d;
 }
 
-function startOfMonth(date: Date): Date {
+export function startOfMonth(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
 }
 
-function endOfMonth(date: Date): Date {
+export function endOfMonth(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0, 23, 59, 59, 999));
+}
+
+/**
+ * Formats a UTC-anchored date as "MMM yyyy" (e.g. "Sep 2026") without going
+ * through the host's local timezone -- date-fns's `format` reads local wall-
+ * clock time, so a period boundary like `Date.UTC(2026, 6, 1)` would render
+ * as "Jun 2026" instead of "Jul 2026" in a negative-UTC-offset timezone.
+ */
+export function formatMonthYear(date: Date): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(date);
 }
 
 export type PeriodStatus = "PAID" | "PARTIAL" | "DUE" | "OVERDUE";
@@ -111,7 +130,11 @@ export function calculatePeriodStatus(
   return "DUE";
 }
 
-/** The coverage range a new payment of `periodsCovered` periods would span, starting at `coverageStart`. */
+/**
+ * The coverage range a new payment of `periodsCovered` periods would span,
+ * starting at `coverageStart`. Invariant: `coverageStart` must be a
+ * start-of-month date -- every current call site already passes one.
+ */
 export function computeCoverageRange(
   coverageStart: Date,
   periodsCovered: number,

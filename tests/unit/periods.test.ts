@@ -5,6 +5,10 @@ import {
   calculatePeriodStatus,
   advancePeriodStart,
   computeCoverageRange,
+  startOfMonth,
+  endOfMonth,
+  addMonths,
+  formatMonthYear,
 } from "@/lib/fees/periods";
 
 describe("enumeratePeriods", () => {
@@ -119,5 +123,33 @@ describe("computeCoverageRange", () => {
   it("collapses to a single day for CUSTOM regardless of periodsCovered", () => {
     const { coverageStart, coverageEnd } = computeCoverageRange(new Date("2026-09-01"), 1, "CUSTOM");
     expect(coverageStart).toEqual(coverageEnd);
+  });
+});
+
+describe("exported UTC-safe month helpers", () => {
+  it("startOfMonth is exported and usable directly", () => {
+    expect(startOfMonth(new Date("2026-06-15")).toISOString().slice(0, 10)).toBe("2026-06-01");
+  });
+
+  it("endOfMonth is exported and usable directly", () => {
+    expect(endOfMonth(new Date("2026-02-10")).toISOString().slice(0, 10)).toBe("2026-02-28");
+  });
+
+  it("addMonths is exported and usable directly", () => {
+    expect(addMonths(new Date("2026-06-01"), 2).toISOString().slice(0, 10)).toBe("2026-08-01");
+  });
+});
+
+describe("formatMonthYear", () => {
+  it("formats a UTC-midnight period start as its own month, regardless of local timezone", () => {
+    expect(formatMonthYear(new Date(Date.UTC(2026, 6, 1)))).toBe("Jul 2026");
+  });
+
+  it("formats a UTC period end (23:59:59.999 UTC) as the same month", () => {
+    expect(formatMonthYear(new Date(Date.UTC(2026, 8, 30, 23, 59, 59, 999)))).toBe("Sep 2026");
+  });
+
+  it("formats a January boundary correctly (year rollover)", () => {
+    expect(formatMonthYear(new Date(Date.UTC(2027, 0, 1)))).toBe("Jan 2027");
   });
 });
