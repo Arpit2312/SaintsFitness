@@ -1198,12 +1198,12 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 7: Fee actions (mutations)
+## Task 7: Fee actions (mutations) ✅ DONE (commit 634799a, fixed in 496b791 -- review flagged `saveFeePlan` missing a `/dashboard` revalidatePath despite being the sole writer of `FeePlan.finalAmount` [which the dashboard's pendingFees aggregate reads], and both actions missing a soft-delete guard on their student lookup -- an extended where-unique filter alone would be insufficient since `upsert`'s `create` branch has no soft-delete awareness, so an explicit `prisma.student.findUnique({ where: { id, deletedAt: null } })` guard was added to the top of both functions instead)
 
 **Files:**
 - Create: `src/actions/fees.ts`
 
-- [ ] **Step 1: Write `src/actions/fees.ts`**
+- [x] **Step 1: Write `src/actions/fees.ts`**
 
 ```ts
 "use server";
@@ -1218,6 +1218,15 @@ import { revalidatePath } from "next/cache";
 
 export async function saveFeePlan(studentId: string, input: FeePlanInput) {
   const data = feePlanSchema.parse(input);
+
+  const student = await prisma.student.findUnique({
+    where: { id: studentId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!student) {
+    throw new Error("Student not found.");
+  }
+
   const finalAmount = data.totalAmount - data.discount;
 
   await prisma.feePlan.upsert({
@@ -1241,10 +1250,19 @@ export async function saveFeePlan(studentId: string, input: FeePlanInput) {
 
   revalidatePath(`/students/${studentId}`);
   revalidatePath("/fees");
+  revalidatePath("/dashboard");
 }
 
 export async function createPayment(studentId: string, input: PaymentInput) {
   const data = paymentSchema.parse(input);
+
+  const student = await prisma.student.findUnique({
+    where: { id: studentId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!student) {
+    throw new Error("Student not found.");
+  }
 
   const plan = await prisma.feePlan.findUnique({
     where: { studentId },
@@ -1288,7 +1306,7 @@ export async function createPayment(studentId: string, input: PaymentInput) {
 }
 ```
 
-- [ ] **Step 2: Verify it compiles**
+- [x] **Step 2: Verify it compiles**
 
 ```bash
 npx tsc --noEmit
@@ -1296,7 +1314,7 @@ npx tsc --noEmit
 
 Expected: clean.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add -A
