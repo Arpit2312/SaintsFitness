@@ -2032,13 +2032,13 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 11: Top-level Fees page
+## Task 11: Top-level Fees page ✅ DONE (commit 69dcee7 -- two required deviations from the plan's literal draft, both anticipated before implementation: (A) `listStudentFeeStatuses`'s `totalPending` is a Decimal, same RSC-boundary issue as Task 10, fixed the same way via serialization in `page.tsx`; (B) `listStudentFeeStatuses` can return a 5th status value, `"NOT_STARTED"` [from Task 6's fix, after this draft was written], which the plan's `Record<PeriodStatus, string>` color map and filter didn't cover -- fixed with an exhaustive-checked `Record<PeriodStatus | "NOT_STARTED", string>` map, a new filter option, and a `STATUS_LABELS` map for human-readable badge text; review flagged the label map as a minor, non-blocking inconsistency with `fee-history-table.tsx`'s raw-enum-text convention but recommended leaving both as-is, since `students-list.tsx` [Phase 1] already renders raw enum text too -- a unified status-label pass across all three files is a candidate follow-up, not a Phase 2 blocker)
 
 **Files:**
 - Create: `src/components/fees/fees-list.tsx`
 - Modify: `src/app/(app)/fees/page.tsx`
 
-- [ ] **Step 1: Write `src/components/fees/fees-list.tsx`**
+- [x] **Step 1: Write `src/components/fees/fees-list.tsx`**
 
 ```tsx
 "use client";
@@ -2058,17 +2058,55 @@ import { EmptyState } from "@/components/shared/empty-state";
 import type { listStudentFeeStatuses } from "@/lib/queries/fees";
 import type { PeriodStatus } from "@/lib/fees/fee-history";
 
-type StudentFeeStatus = Awaited<ReturnType<typeof listStudentFeeStatuses>>[number];
+// Mirrors `Awaited<ReturnType<typeof listStudentFeeStatuses>>[number]`, but
+// with `totalPending` (a Prisma Decimal when a student has a plan) converted
+// to a plain number -- React Server Components reject Decimal instances
+// passed to a "use client" component ("Only plain objects can be passed to
+// Client Components from Server Components. Decimal objects are not
+// supported."), so page.tsx converts via `.toNumber()` before handing the
+// list to this component. Same pattern as SerializedPeriod/SerializedFeeHistory
+// in fee-history-table.tsx / student-fees-tab.tsx.
+export type SerializedStudentFeeStatus =
+  | {
+      studentId: string;
+      studentCode: string;
+      name: string;
+      hasPlan: false;
+    }
+  | {
+      studentId: string;
+      studentCode: string;
+      name: string;
+      hasPlan: true;
+      status: PeriodStatus | "NOT_STARTED";
+      totalPending: number;
+    };
 
-const STATUS_COLORS: Record<PeriodStatus, string> = {
+// listStudentFeeStatuses can report "NOT_STARTED" for a plan whose dueDate
+// hasn't arrived yet (see src/lib/queries/fees.ts), in addition to the 4
+// PeriodStatus values -- so the color map and filter must cover all 5, not
+// just PeriodStatus. Typing this as a Record over the full union means
+// TypeScript enforces exhaustiveness here.
+const STATUS_COLORS: Record<PeriodStatus | "NOT_STARTED", string> = {
   PAID: "border-success text-success",
   PARTIAL: "border-warning text-warning",
   DUE: "border-muted text-muted",
   OVERDUE: "border-danger text-danger",
+  NOT_STARTED: "border-gold text-gold",
 };
 
-export function FeesList({ students }: { students: StudentFeeStatus[] }) {
-  const [statusFilter, setStatusFilter] = useState<PeriodStatus | "ALL">("ALL");
+const STATUS_LABELS: Record<PeriodStatus | "NOT_STARTED", string> = {
+  PAID: "Paid",
+  PARTIAL: "Partial",
+  DUE: "Due",
+  OVERDUE: "Overdue",
+  NOT_STARTED: "Not Started",
+};
+
+type StatusFilter = PeriodStatus | "NOT_STARTED" | "ALL";
+
+export function FeesList({ students }: { students: SerializedStudentFeeStatus[] }) {
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
 
   const filtered = useMemo(() => {
     if (statusFilter === "ALL") return students;
@@ -2079,7 +2117,7 @@ export function FeesList({ students }: { students: StudentFeeStatus[] }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold text-foreground">Fees</h1>
-        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as PeriodStatus | "ALL")}>
+        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
           <SelectTrigger className="w-40">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
@@ -2089,6 +2127,7 @@ export function FeesList({ students }: { students: StudentFeeStatus[] }) {
             <SelectItem value="PARTIAL">Partial</SelectItem>
             <SelectItem value="DUE">Due</SelectItem>
             <SelectItem value="OVERDUE">Overdue</SelectItem>
+            <SelectItem value="NOT_STARTED">Not Started</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -2113,10 +2152,10 @@ export function FeesList({ students }: { students: StudentFeeStatus[] }) {
               {student.hasPlan ? (
                 <div className="flex items-center gap-3">
                   <span className="text-sm text-muted">
-                    ₹{student.totalPending.toNumber().toLocaleString("en-IN")} pending
+                    ₹{student.totalPending.toLocaleString("en-IN")} pending
                   </span>
                   <Badge variant="outline" className={STATUS_COLORS[student.status]}>
-                    {student.status}
+                    {STATUS_LABELS[student.status]}
                   </Badge>
                 </div>
               ) : (
@@ -2133,21 +2172,31 @@ export function FeesList({ students }: { students: StudentFeeStatus[] }) {
 }
 ```
 
-- [ ] **Step 2: Rewrite `src/app/(app)/fees/page.tsx`**
+- [x] **Step 2: Rewrite `src/app/(app)/fees/page.tsx`**
 
 Replace the Phase 1 `PhaseStub` placeholder entirely:
 
 ```tsx
 import { listStudentFeeStatuses } from "@/lib/queries/fees";
-import { FeesList } from "@/components/fees/fees-list";
+import { FeesList, type SerializedStudentFeeStatus } from "@/components/fees/fees-list";
 
 export default async function FeesPage() {
   const students = await listStudentFeeStatuses();
-  return <FeesList students={students} />;
+
+  // Convert each Decimal `totalPending` to a plain number before crossing
+  // the Server -> Client Component boundary (see fees-list.tsx's doc
+  // comment / Task 10's StudentFeesTab for why this is required).
+  const serialized: SerializedStudentFeeStatus[] = students.map((student) =>
+    student.hasPlan
+      ? { ...student, totalPending: student.totalPending.toNumber() }
+      : student
+  );
+
+  return <FeesList students={serialized} />;
 }
 ```
 
-- [ ] **Step 3: Verify manually**
+- [x] **Step 3: Verify manually**
 
 ```bash
 npm run dev
@@ -2155,7 +2204,9 @@ npm run dev
 
 Log in, navigate to Fees. Confirm students with no fee plan show "No plan", and (using the test student from Task 10, if you re-create one) a student with a plan shows their correct status/pending amount. Confirm the status filter works. Clean up any test data created. Stop the server.
 
-- [ ] **Step 4: Commit**
+**Result:** Full logged-in browser click-through was not performed (entering the seeded admin's password is a prohibited action under this session's safety rules, credential source notwithstanding). Verified instead via a direct data-layer script exercising the real `listStudentFeeStatuses()` query and replicating `page.tsx`/`fees-list.tsx`'s exact serialization and filter logic: confirmed ST-00043 (no plan) returns `hasPlan: false`; a temp student with a partial payment returns `status: "PARTIAL"` with the correct `totalPending`; a temp student with a future-dated plan returns `status: "NOT_STARTED"` with `totalPending: 0`; filtering to each status (including the new `NOT_STARTED` option) returns exactly the expected subset; `ALL` returns everyone. Cleaned up back to baseline (1 student = ST-00043, 0 plans/payments/receipts). If a visual (rendered-page) check is wanted, it needs to happen from a session with the user's own login.
+
+- [x] **Step 4: Commit**
 
 ```bash
 git add -A
