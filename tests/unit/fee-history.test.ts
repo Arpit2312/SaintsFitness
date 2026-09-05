@@ -170,11 +170,13 @@ describe("computeFeeHistory", () => {
     // computeFeeHistory sorts its own `payments` argument internally (by
     // coverageEnd, not by array position or paymentDate), so feeding it the
     // very same set of payments in a different array order must never change
-    // totalPaid. A fixed, hand-built set of 5 payments over a 6-period plan
+    // totalPaid. A fixed, hand-built set of 6 payments over a 6-period plan
     // (June-Nov), deliberately mixing every overlap shape found adversarial
     // in review: same coverageStart, same coverageEnd (nested, sharing the
-    // right edge), plain nesting, and two genuinely-crossing pairs where
-    // neither range is a subset of the other.
+    // right edge), a payment strictly interior to another sharing NEITHER
+    // edge (the exact shape that broke the first, coverageStart-ascending
+    // fix attempt), and two genuinely-crossing pairs where neither range is
+    // a subset of the other.
     const PERM_TODAY = new Date("2026-11-04"); // periods: Jun, Jul, Aug, Sep, Oct, Nov
 
     // Same coverageStart as `wide`, and nested inside it.
@@ -184,6 +186,16 @@ describe("computeFeeHistory", () => {
       coverageEnd: new Date("2026-06-30"),
       paymentDate: new Date("2026-06-20"),
     });
+    // Strictly interior to `wide` -- shares NEITHER coverageStart nor
+    // coverageEnd with it. This is the shape that defeated the first
+    // (coverageStart-ascending) fix attempt: a wide payment starting
+    // earlier than a narrow payment nested later inside it.
+    const narrowJulyOnly = payment({
+      amount: new Decimal(400),
+      coverageStart: new Date("2026-07-01"),
+      coverageEnd: new Date("2026-07-31"),
+      paymentDate: new Date("2026-07-10"),
+    });
     // Same coverageEnd as `wide` (nested, sharing the right edge).
     const narrowJulAug = payment({
       amount: new Decimal(800),
@@ -191,9 +203,9 @@ describe("computeFeeHistory", () => {
       coverageEnd: new Date("2026-08-31"),
       paymentDate: new Date("2026-07-15"),
     });
-    // Wide range containing both narrow payments above.
+    // Wide range containing all three narrow payments above.
     const wide = payment({
-      amount: new Decimal(3700),
+      amount: new Decimal(3300),
       coverageStart: new Date("2026-06-01"),
       coverageEnd: new Date("2026-08-31"),
       paymentDate: new Date("2026-06-01"),
@@ -213,20 +225,37 @@ describe("computeFeeHistory", () => {
       paymentDate: new Date("2026-09-10"),
     });
 
-    const original = [narrowJune, narrowJulAug, wide, crossMid, crossLate];
-    const reversed = [crossLate, crossMid, wide, narrowJulAug, narrowJune];
-    const shuffle1 = [wide, crossLate, narrowJune, crossMid, narrowJulAug];
-    const shuffle2 = [crossMid, narrowJulAug, crossLate, wide, narrowJune];
+    const original = [narrowJune, narrowJulyOnly, narrowJulAug, wide, crossMid, crossLate];
+    const reversed = [crossLate, crossMid, wide, narrowJulAug, narrowJulyOnly, narrowJune];
+    const shuffle1 = [wide, crossLate, narrowJune, crossMid, narrowJulAug, narrowJulyOnly];
+    const shuffle2 = [crossMid, narrowJulyOnly, narrowJulAug, crossLate, wide, narrowJune];
 
-    const totals = [original, reversed, shuffle1, shuffle2].map(
-      (ordering) => computeFeeHistory(PLAN_START, "MONTHLY", new Decimal(1500), ordering, PERM_TODAY).totalPaid
+    const results = [original, reversed, shuffle1, shuffle2].map((ordering) =>
+      computeFeeHistory(PLAN_START, "MONTHLY", new Decimal(1500), ordering, PERM_TODAY)
     );
+    const totals = results.map((r) => r.totalPaid);
 
     // Every ordering of the identical set of payments must land on the same
     // totalPaid -- 9000, all six periods (6 x 1500) fully paid. If a future
     // refactor drops the internal sort (or keys it off paymentDate / array
     // position instead of coverageEnd), some of these orderings would
     // silently lose money and this assertion would catch it.
+    //
+    // totalPaid alone would pass even if a bug redistributed the SAME total
+    // across the wrong periods (e.g. via a broken tiebreak) as long as the
+    // grand total still hit 9000 -- since every period here fully saturates
+    // (money paid across all payments exceeds every period's due amount),
+    // that can't actually happen for THIS fixture: waterfallAllocate caps
+    // each period at its own amountDue, so total=9000 is only reachable if
+    // every one of the 6 periods individually received its full 1500. The
+    // explicit per-period check below makes that guarantee an assertion
+    // instead of an unstated property of the fixture's numbers.
+    for (const result of results) {
+      for (const period of result.periods) {
+        expect(period.amountPaid.toString()).toBe("1500");
+        expect(period.status).toBe("PAID");
+      }
+    }
     for (const total of totals) {
       expect(total.toString()).toBe("9000");
     }
