@@ -22,6 +22,20 @@ export async function saveBatchAttendance(input: SaveBatchAttendanceInput) {
     throw new Error("Batch not found.");
   }
 
+  // Attendance has a direct FK to Student/Batch (not to Enrollment), so the
+  // batch check above doesn't confirm each record's student actually belongs
+  // to this batch. Verify every record's studentId is currently (non-deleted)
+  // enrolled in this batch before writing anything.
+  const enrollments = await prisma.enrollment.findMany({
+    where: { batchId: data.batchId, student: { deletedAt: null } },
+    select: { studentId: true },
+  });
+  const enrolledStudentIds = new Set(enrollments.map((e) => e.studentId));
+  const invalidRecord = data.records.find((r) => !enrolledStudentIds.has(r.studentId));
+  if (invalidRecord) {
+    throw new Error("One or more students are not currently enrolled in this batch.");
+  }
+
   // One transaction for the whole roster: either every student's status for
   // this batch+date is saved, or none are -- never a partially-saved
   // roll-call. (This codebase has no other $transaction usage yet; a bulk
@@ -45,7 +59,11 @@ export async function markStudentAttendance(studentId: string, input: MarkStuden
   const date = startOfUTCDay(data.date);
 
   const enrollment = await prisma.enrollment.findUnique({
-    where: { studentId_batchId: { studentId, batchId: data.batchId } },
+    where: {
+      studentId_batchId: { studentId, batchId: data.batchId },
+      student: { deletedAt: null },
+      batch: { deletedAt: null },
+    },
     select: { studentId: true },
   });
   if (!enrollment) {
