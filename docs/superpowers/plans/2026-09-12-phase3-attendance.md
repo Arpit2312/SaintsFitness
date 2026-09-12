@@ -30,7 +30,7 @@
 **Interfaces:**
 - Produces: no code-level interface — this only adds two indexes to the already-existing `Attendance` table, used implicitly by every query in later tasks.
 
-- [ ] **Step 1: Add indexes to the `Attendance` model**
+- [x] **Step 1: Add indexes to the `Attendance` model**
 
 In `prisma/schema.prisma`, find the existing `Attendance` model:
 
@@ -70,7 +70,7 @@ model Attendance {
 
 This closes a follow-up Phase 1's plan doc already flagged: non-unique FK columns with no index, cheap to add before this table gets real write volume from daily roll-call marking.
 
-- [ ] **Step 2: Generate the migration SQL (non-interactive-safe)**
+- [x] **Step 2: Generate the migration SQL (non-interactive-safe)**
 
 `prisma migrate dev` fails in a non-interactive shell (any confirmation prompt throws `Error: Prisma Migrate has detected that the environment is non-interactive`) — this bit Phase 2's Task 1 the same way. Use the diff-based workaround instead:
 
@@ -80,7 +80,7 @@ npx prisma migrate diff --from-schema-datasource --to-schema-datamodel --script 
 
 Expected output: SQL containing exactly two `CREATE INDEX` statements for `Attendance(studentId)` and `Attendance(batchId)`, nothing else. If it contains anything else, stop and investigate before proceeding — it means `schema.prisma` has an unrelated pending change.
 
-- [ ] **Step 3: Place the migration and deploy it**
+- [x] **Step 3: Place the migration and deploy it**
 
 Create `prisma/migrations/<YYYYMMDDHHMMSS>_index_attendance_fks/migration.sql` (pick the timestamp as the current UTC time, matching the folder-naming convention of the existing migrations in `prisma/migrations/`) with the SQL from Step 2, then:
 
@@ -91,7 +91,7 @@ npx prisma migrate status
 
 Expected: `migrate deploy` reports the new migration applied; `migrate status` reports "Database schema is up to date!" with no drift.
 
-- [ ] **Step 4: Regenerate the Prisma client and verify**
+- [x] **Step 4: Regenerate the Prisma client and verify**
 
 ```bash
 npx prisma generate
@@ -100,7 +100,7 @@ npx tsc --noEmit
 
 Expected: clean (this task only adds indexes, no field/type changes, so no code should be affected yet).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A
@@ -124,7 +124,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 **Interfaces:**
 - Produces: `startOfUTCDay(date: Date): Date`, `endOfUTCDay(date: Date): Date`, `weekdayAbbrevUTC(date: Date): string`, `todayInIST(): Date`, `formatDateUTC(date: Date): string` (all from `src/lib/dates.ts`); `isBatchScheduledOn(batchDays: string[], date: Date): boolean` (from `src/lib/attendance/schedule.ts`); `computeAttendanceRate(records: { status: AttendanceStatus }[]): number` (from `src/lib/attendance/rate.ts`). Every later task imports from these three files by these exact names.
 
-- [ ] **Step 1: Write the failing tests for `src/lib/dates.ts`**
+- [x] **Step 1: Write the failing tests for `src/lib/dates.ts`**
 
 Create `tests/unit/dates.test.ts`:
 
@@ -173,7 +173,7 @@ describe("formatDateUTC", () => {
 });
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 ```bash
 npx vitest run tests/unit/dates.test.ts
@@ -181,7 +181,7 @@ npx vitest run tests/unit/dates.test.ts
 
 Expected: FAIL — `Cannot find module '@/lib/dates'` (the file doesn't exist yet).
 
-- [ ] **Step 3: Implement `src/lib/dates.ts`**
+- [x] **Step 3: Implement `src/lib/dates.ts`**
 
 ```ts
 /**
@@ -235,7 +235,7 @@ export function formatDateUTC(date: Date): string {
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 ```bash
 npx vitest run tests/unit/dates.test.ts
@@ -243,7 +243,7 @@ npx vitest run tests/unit/dates.test.ts
 
 Expected: all pass.
 
-- [ ] **Step 5: Write the failing tests for `src/lib/attendance/schedule.ts`**
+- [x] **Step 5: Write the failing tests for `src/lib/attendance/schedule.ts`**
 
 Create `tests/unit/attendance-schedule.test.ts`:
 
@@ -270,7 +270,7 @@ describe("isBatchScheduledOn", () => {
 });
 ```
 
-- [ ] **Step 6: Run the tests to verify they fail**
+- [x] **Step 6: Run the tests to verify they fail**
 
 ```bash
 npx vitest run tests/unit/attendance-schedule.test.ts
@@ -278,7 +278,7 @@ npx vitest run tests/unit/attendance-schedule.test.ts
 
 Expected: FAIL — `Cannot find module '@/lib/attendance/schedule'`.
 
-- [ ] **Step 7: Implement `src/lib/attendance/schedule.ts`**
+- [x] **Step 7: Implement `src/lib/attendance/schedule.ts`**
 
 ```ts
 import { weekdayAbbrevUTC } from "@/lib/dates";
@@ -295,7 +295,7 @@ export function isBatchScheduledOn(batchDays: string[], date: Date): boolean {
 }
 ```
 
-- [ ] **Step 8: Run the tests to verify they pass**
+- [x] **Step 8: Run the tests to verify they pass**
 
 ```bash
 npx vitest run tests/unit/attendance-schedule.test.ts
@@ -303,7 +303,7 @@ npx vitest run tests/unit/attendance-schedule.test.ts
 
 Expected: all pass.
 
-- [ ] **Step 9: Write the failing tests for `src/lib/attendance/rate.ts`**
+- [x] **Step 9: Write the failing tests for `src/lib/attendance/rate.ts`**
 
 Create `tests/unit/attendance-rate.test.ts`:
 
@@ -342,7 +342,7 @@ describe("computeAttendanceRate", () => {
 });
 ```
 
-- [ ] **Step 10: Run the tests to verify they fail**
+- [x] **Step 10: Run the tests to verify they fail**
 
 ```bash
 npx vitest run tests/unit/attendance-rate.test.ts
@@ -350,7 +350,7 @@ npx vitest run tests/unit/attendance-rate.test.ts
 
 Expected: FAIL — `Cannot find module '@/lib/attendance/rate'`.
 
-- [ ] **Step 11: Implement `src/lib/attendance/rate.ts`**
+- [x] **Step 11: Implement `src/lib/attendance/rate.ts`**
 
 ```ts
 import type { AttendanceStatus } from "@prisma/client";
@@ -368,7 +368,7 @@ export function computeAttendanceRate(records: { status: AttendanceStatus }[]): 
 }
 ```
 
-- [ ] **Step 12: Run all three test files together**
+- [x] **Step 12: Run all three test files together**
 
 ```bash
 npx vitest run tests/unit/dates.test.ts tests/unit/attendance-schedule.test.ts tests/unit/attendance-rate.test.ts
@@ -376,7 +376,7 @@ npx vitest run tests/unit/dates.test.ts tests/unit/attendance-schedule.test.ts t
 
 Expected: all pass, 16 tests total (7 + 4 + 5).
 
-- [ ] **Step 13: Verify no regressions and typecheck**
+- [x] **Step 13: Verify no regressions and typecheck**
 
 ```bash
 npx vitest run
@@ -385,7 +385,7 @@ npx tsc --noEmit
 
 Expected: full suite passes (existing 84 + 13 new = 97), tsc clean.
 
-- [ ] **Step 14: Commit**
+- [x] **Step 14: Commit**
 
 ```bash
 git add -A
@@ -583,7 +583,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 4: Attendance queries (server-only reads)
+## Task 4: Attendance queries (server-only reads) ✅ DONE (commit 77a5ffe, matched the plan byte-for-byte, reviewed and approved — soft-delete scoping scrutinized function-by-function, no gap found; one asymmetry noted [`getStudentAttendanceHistory` doesn't filter a soft-deleted *batch* referenced by a historical record] but confirmed consistent with existing `students.ts` convention for historical/display-only relations, not a regression)
 
 **Files:**
 - Create: `src/lib/queries/attendance.ts`
@@ -594,7 +594,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 This is the first task touching the real database with real reads — there's no UI yet, so verify with a temporary script against the real Neon DB, the same way Phase 2's Task 6 did.
 
-- [ ] **Step 1: Write `src/lib/queries/attendance.ts`**
+- [x] **Step 1: Write `src/lib/queries/attendance.ts`**
 
 ```ts
 // Read-only queries, not mutations -- lives outside src/actions/ (which is
@@ -684,7 +684,7 @@ export async function getStudentEnrolledBatches(studentId: string) {
 }
 ```
 
-- [ ] **Step 2: Verify it compiles**
+- [x] **Step 2: Verify it compiles**
 
 ```bash
 npx tsc --noEmit
@@ -692,7 +692,7 @@ npx tsc --noEmit
 
 Expected: clean.
 
-- [ ] **Step 3: Verify against the real database**
+- [x] **Step 3: Verify against the real database**
 
 The shared Neon database currently has 3 Courses, 2 Instructors, 3 Batches, some real students (check current count via a read-only query before starting — do not assume 0), 0 Attendance records. Write a temporary script (delete it when done) that:
 
@@ -704,7 +704,7 @@ The shared Neon database currently has 3 Courses, 2 Instructors, 3 Batches, some
 6. Calls `getStudentEnrolledBatches(studentId)` — confirm it returns the batch(es) that student is actually enrolled in.
 7. Clean up: delete the `Attendance` row (and any temporary student/enrollment you created). Confirm the database is back to its exact pre-test state (same counts you recorded in step 1).
 
-- [ ] **Step 4: Run full regression**
+- [x] **Step 4: Run full regression**
 
 ```bash
 npx vitest run
@@ -713,7 +713,7 @@ npx tsc --noEmit
 
 Expected: clean, no new test files needed for this task (thin query wrappers over already-tested pure logic, verified manually against the real DB per Phase 2's Task 6 precedent).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A
@@ -724,7 +724,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 5: Attendance actions (mutations)
+## Task 5: Attendance actions (mutations) ✅ DONE (commit fdd8d9e, matched the plan byte-for-byte; fixed in 96fd564 -- review empirically confirmed against the real DB that the plan's own literal code violated its own stated design principle [Global Constraints: mutations must verify the target isn't soft-deleted]: `markStudentAttendance`'s enrollment check didn't verify the student/batch weren't soft-deleted [Enrollment has no deletedAt of its own and isn't cascade-affected], so attendance could be marked for a soft-deleted student or an archived batch; `saveBatchAttendance` never verified each record's studentId was actually enrolled in the target batch at all. Fixed by extending the enrollment lookup with `student`/`batch` non-deleted filters [same "extended where-unique" pattern as Task 4's `getStudentEnrolledBatches`] and adding a pre-transaction enrollment-membership check; both fixes independently re-verified at runtime against the real database by a follow-up review, not just compile-checked)
 
 **Files:**
 - Create: `src/actions/attendance.ts`
@@ -735,7 +735,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 **Before writing:** the `Attendance` model's compound unique constraint is `@@unique([studentId, batchId, date])`. Prisma generates the compound-key `where` field name by joining the field names with underscores in declaration order (this codebase's `Enrollment.@@unique([studentId, batchId])` follows the identical convention, though nothing currently queries it by that compound key directly, so this will be the first use of that specific Prisma feature here). After writing the code below, run `npx tsc --noEmit` immediately — if the compound key name (`studentId_batchId_date`) is wrong, TypeScript will reject it as an unknown property immediately, not fail silently; check the generated type in `node_modules/.prisma/client/index.d.ts` (search for `AttendanceWhereUniqueInput`) if you need to confirm the exact name before or after writing.
 
-- [ ] **Step 1: Write `src/actions/attendance.ts`**
+- [x] **Step 1: Write `src/actions/attendance.ts`**
 
 ```ts
 "use server";
@@ -785,7 +785,11 @@ export async function markStudentAttendance(studentId: string, input: MarkStuden
   const date = startOfUTCDay(data.date);
 
   const enrollment = await prisma.enrollment.findUnique({
-    where: { studentId_batchId: { studentId, batchId: data.batchId } },
+    where: {
+      studentId_batchId: { studentId, batchId: data.batchId },
+      student: { deletedAt: null },
+      batch: { deletedAt: null },
+    },
     select: { studentId: true },
   });
   if (!enrollment) {
@@ -804,7 +808,25 @@ export async function markStudentAttendance(studentId: string, input: MarkStuden
 }
 ```
 
-- [ ] **Step 2: Verify it compiles**
+**Post-review fix (`96fd564`):** `saveBatchAttendance` never verified each record's `studentId` was actually enrolled in the target batch. Fixed by adding, right after the batch-existence check:
+
+```ts
+  // Attendance has a direct FK to Student/Batch (not to Enrollment), so the
+  // batch check above doesn't confirm each record's student actually belongs
+  // to this batch. Verify every record's studentId is currently (non-deleted)
+  // enrolled in this batch before writing anything.
+  const enrollments = await prisma.enrollment.findMany({
+    where: { batchId: data.batchId, student: { deletedAt: null } },
+    select: { studentId: true },
+  });
+  const enrolledStudentIds = new Set(enrollments.map((e) => e.studentId));
+  const invalidRecord = data.records.find((r) => !enrolledStudentIds.has(r.studentId));
+  if (invalidRecord) {
+    throw new Error("One or more students are not currently enrolled in this batch.");
+  }
+```
+
+- [x] **Step 2: Verify it compiles**
 
 ```bash
 npx tsc --noEmit
@@ -812,7 +834,7 @@ npx tsc --noEmit
 
 Expected: clean. If `studentId_batchId_date` or `studentId_batchId` is rejected as an unknown property, check the generated `AttendanceWhereUniqueInput`/`EnrollmentWhereUniqueInput` types in `node_modules/.prisma/client/index.d.ts` for the actual generated name and correct it.
 
-- [ ] **Step 3: Verify against the real database**
+- [x] **Step 3: Verify against the real database**
 
 Using a temporary script (delete when done), against a temporary test student enrolled in an existing seeded batch (distinct student code, clean up fully afterward):
 
@@ -826,7 +848,7 @@ Using a temporary script (delete when done), against a temporary test student en
 8. Try `saveBatchAttendance`/`markStudentAttendance` with a future date — confirm zod rejects it before any DB write.
 9. Clean up all `Attendance` rows and the temporary student, confirm the database is back to its pre-test state.
 
-- [ ] **Step 4: Run full regression**
+- [x] **Step 4: Run full regression**
 
 ```bash
 npx vitest run
@@ -835,7 +857,7 @@ npx tsc --noEmit
 
 Expected: clean.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A
@@ -1407,7 +1429,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 8: Dashboard integration (real attendance numbers + two Phase 1 follow-up fixes)
+## Task 8: Dashboard integration (real attendance numbers + two Phase 1 follow-up fixes) ✅ DONE (commit 8451484, matched the plan byte-for-byte, reviewed and approved -- the `batchId: { in: [] }` "no batch scheduled today" edge case was independently verified empirically against the real DB to correctly resolve to zero rows, not match-everything; the `monthCollection` date-boundary swap was confirmed to change only the timezone-safety mechanism, not the numeric result)
 
 **Files:**
 - Modify: `src/lib/queries/dashboard.ts`
@@ -1419,11 +1441,11 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 This task folds in two already-documented Phase 1 follow-ups (see `docs/superpowers/plans/2026-09-04-phase1-foundation.md`'s "Known follow-ups for later phases") since both are exactly what real attendance data needs anyway: "Today's Classes" currently counts every active batch regardless of schedule, and this file's date-range boundaries use `date-fns`'s local-time `startOfMonth`/`endOfMonth`/`startOfDay`/`endOfDay` instead of a UTC-safe equivalent.
 
-- [ ] **Step 1: Read the current file**
+- [x] **Step 1: Read the current file**
 
 Read `src/lib/queries/dashboard.ts` in full before editing — confirm it still matches what's described below (it hasn't been touched since Phase 1).
 
-- [ ] **Step 2: Rewrite `src/lib/queries/dashboard.ts`**
+- [x] **Step 2: Rewrite `src/lib/queries/dashboard.ts`**
 
 ```ts
 // Read-only query, not a mutation — lives outside src/actions/ (which is
@@ -1489,7 +1511,7 @@ export async function getDashboardStats() {
 }
 ```
 
-- [ ] **Step 3: Update `src/app/(app)/dashboard/page.tsx`**
+- [x] **Step 3: Update `src/app/(app)/dashboard/page.tsx`**
 
 Replace the whole file (only the "This Month Collection"/"Pending Fees" `note` props are removed, since Phase 2 already shipped those — the note was stale — and the attendance card's value/note changes):
 
@@ -1522,7 +1544,7 @@ export default async function DashboardPage() {
 }
 ```
 
-- [ ] **Step 4: Verify it compiles**
+- [x] **Step 4: Verify it compiles**
 
 ```bash
 npx tsc --noEmit
@@ -1530,11 +1552,11 @@ npx tsc --noEmit
 
 Expected: clean.
 
-- [ ] **Step 5: Verify against the real database**
+- [x] **Step 5: Verify against the real database**
 
 Using a temporary script (or, if browser access is available, the real Dashboard page): confirm `getDashboardStats()` returns sane numbers against current real data — in particular, create a temporary batch-day scenario if the seeded batches don't currently have one scheduled "today" (e.g. temporarily note today's actual weekday and check whether any seeded batch's `days` includes it), mark one enrolled student PRESENT for today in a batch that IS scheduled today, and confirm `presentToday`/`expectedToday`/`todaysClasses` all reflect it correctly. Also confirm `monthCollection` still returns the correct real figure from Phase 2's data (this is the regression check for the `startOfMonth`/`endOfMonth` swap — the numeric result should be identical to before the swap, since the fix only changes *how* the boundary is computed, not what real payments fall within the current month in this IST-positive-offset environment). Clean up any temporary attendance rows/students created.
 
-- [ ] **Step 6: Run full regression**
+- [x] **Step 6: Run full regression**
 
 ```bash
 npx vitest run
@@ -1544,7 +1566,7 @@ npx next build
 
 Expected: all clean; `next build`'s route table still lists `/dashboard` and `/attendance`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add -A
