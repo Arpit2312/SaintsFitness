@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { saveBatchAttendanceSchema, markStudentAttendanceSchema } from "@/lib/validations/attendance";
 
 describe("saveBatchAttendanceSchema", () => {
@@ -48,5 +48,40 @@ describe("markStudentAttendanceSchema", () => {
 
   it("rejects a missing batchId", () => {
     expect(markStudentAttendanceSchema.safeParse({ ...valid, batchId: "" }).success).toBe(false);
+  });
+});
+
+describe("notFutureDate IST boundary (regression)", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("accepts today's IST calendar date even during the 00:00-05:30 IST window where raw UTC 'now' lags behind", () => {
+    // 2026-01-04T20:00:00Z = 2026-01-05 01:30 IST -- IST's calendar day is
+    // already the 5th, but the UTC-midnight instant for "2026-01-05" (what
+    // a naive `Date.now()` comparison would check against) is still ~4
+    // hours in the future relative to raw UTC "now". A date-only compare
+    // against todayInIST() must still accept this as "today", not "future".
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-04T20:00:00.000Z"));
+
+    const valid = {
+      batchId: "batch1",
+      date: "2026-01-05",
+      records: [{ studentId: "s1", status: "PRESENT" }],
+    };
+    expect(saveBatchAttendanceSchema.safeParse(valid).success).toBe(true);
+  });
+
+  it("still rejects a genuinely future IST calendar date during that same window", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-04T20:00:00.000Z")); // IST "today" = Jan 5
+
+    const future = {
+      batchId: "batch1",
+      date: "2026-01-06", // IST tomorrow
+      records: [{ studentId: "s1", status: "PRESENT" }],
+    };
+    expect(saveBatchAttendanceSchema.safeParse(future).success).toBe(false);
   });
 });

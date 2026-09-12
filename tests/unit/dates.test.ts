@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { startOfUTCDay, endOfUTCDay, weekdayAbbrevUTC, formatDateUTC } from "@/lib/dates";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { startOfUTCDay, endOfUTCDay, weekdayAbbrevUTC, formatDateUTC, todayInIST } from "@/lib/dates";
 
 describe("startOfUTCDay", () => {
   it("floors a UTC instant to that day's midnight", () => {
@@ -38,5 +38,33 @@ describe("weekdayAbbrevUTC", () => {
 describe("formatDateUTC", () => {
   it("formats a UTC-midnight date as dd MMM yyyy, reading the UTC instant not local time", () => {
     expect(formatDateUTC(new Date(Date.UTC(2026, 5, 5)))).toBe("05 Jun 2026");
+  });
+});
+
+describe("todayInIST", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("returns today's IST calendar date as a UTC-midnight instant", () => {
+    // 2026-09-12T10:00:00Z = 2026-09-12 15:30 IST -- comfortably inside the
+    // same calendar day in both UTC and IST, so this just pins the happy path.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-12T10:00:00.000Z"));
+    expect(todayInIST().toISOString()).toBe("2026-09-12T00:00:00.000Z");
+  });
+
+  it("is already a day ahead of the UTC calendar date during the IST-evening/UTC-still-daytime window", () => {
+    // 2026-09-12T20:00:00Z = 2026-09-13 01:30 IST -- IST has already rolled
+    // over to the 13th while UTC is still on the 12th.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-12T20:00:00.000Z"));
+    expect(todayInIST().toISOString()).toBe("2026-09-13T00:00:00.000Z");
+  });
+
+  it("formats as zero-padded YYYY-MM-DD across a year boundary", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-12-31T19:00:00.000Z")); // 2027-01-01 00:30 IST
+    expect(todayInIST().toISOString()).toBe("2027-01-01T00:00:00.000Z");
   });
 });
