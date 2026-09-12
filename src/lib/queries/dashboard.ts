@@ -4,27 +4,48 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
-import { startOfDay, endOfDay, startOfMonth, endOfMonth } from "date-fns";
+import { startOfMonth, endOfMonth } from "@/lib/fees/periods";
+import { todayInIST, startOfUTCDay } from "@/lib/dates";
+import { isBatchScheduledOn } from "@/lib/attendance/schedule";
 
 export async function getDashboardStats() {
-  const [totalStudents, activeStudents, todaysBatchCount] = await Promise.all([
+  const today = todayInIST();
+  const dayStart = startOfUTCDay(today); // todayInIST() is already UTC-midnight; this is a defensive no-op
+
+  const [totalStudents, activeStudents, batchesWithEnrollments] = await Promise.all([
     prisma.student.count({ where: { deletedAt: null } }),
     prisma.student.count({ where: { deletedAt: null, status: "ACTIVE" } }),
-    prisma.batch.count({ where: { deletedAt: null } }),
+    prisma.batch.findMany({
+      where: { deletedAt: null },
+      select: {
+        id: true,
+        days: true,
+        enrollments: { where: { student: { deletedAt: null } }, select: { studentId: true } },
+      },
+    }),
   ]);
 
-  // Fee/attendance data doesn't exist until Phase 2/3 — these are real
-  // queries against real (currently empty) tables, not hardcoded numbers.
-  const [monthCollection, pendingFees, todaysAttendanceCount] = await Promise.all([
+  // "Today's Classes" now means batches actually scheduled today (via
+  // Batch.days), not every active batch regardless of schedule -- a Phase 1
+  // follow-up this file's own comment already flagged as overpromising.
+  const todaysBatches = batchesWithEnrollments.filter((b) => isBatchScheduledOn(b.days, dayStart));
+  // Expected attendance today is counted per enrollment, not per unique
+  // student -- a student in two batches that both meet today is expected
+  // twice, once per session (matches the design spec's explicit call-out).
+  const expectedToday = todaysBatches.reduce((sum, b) => sum + b.enrollments.length, 0);
+
+  const [monthCollection, pendingFees, presentToday] = await Promise.all([
     prisma.payment.aggregate({
       _sum: { amount: true },
-      where: {
-        paymentDate: { gte: startOfMonth(new Date()), lte: endOfMonth(new Date()) },
-      },
+      where: { paymentDate: { gte: startOfMonth(today), lte: endOfMonth(today) } },
     }),
     prisma.feePlan.aggregate({ _sum: { finalAmount: true } }),
     prisma.attendance.count({
-      where: { date: { gte: startOfDay(new Date()), lte: endOfDay(new Date()) } },
+      where: {
+        date: dayStart,
+        batchId: { in: todaysBatches.map((b) => b.id) },
+        status: { in: ["PRESENT", "LATE"] },
+      },
     }),
   ]);
 
@@ -33,7 +54,8 @@ export async function getDashboardStats() {
     activeStudents,
     monthCollection: Number(monthCollection._sum.amount ?? 0),
     pendingFees: Number(pendingFees._sum.finalAmount ?? 0),
-    todaysClasses: todaysBatchCount,
-    todaysAttendanceCount,
+    todaysClasses: todaysBatches.length,
+    presentToday,
+    expectedToday,
   };
 }

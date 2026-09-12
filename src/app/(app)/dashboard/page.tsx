@@ -17,24 +17,9 @@ export default async function DashboardPage() {
         <StatCard icon={Users} label="Total Students" value={String(stats.totalStudents)} />
         <StatCard icon={UserCheck} label="Active Students" value={String(stats.activeStudents)} />
         <StatCard icon={CalendarClock} label="Today's Classes" value={String(stats.todaysClasses)} />
-        <StatCard
-          icon={Wallet}
-          label="This Month Collection"
-          value={`₹${stats.monthCollection.toLocaleString("en-IN")}`}
-          note="Starts tracking in Phase 2"
-        />
-        <StatCard
-          icon={AlertCircle}
-          label="Pending Fees"
-          value={`₹${stats.pendingFees.toLocaleString("en-IN")}`}
-          note="Starts tracking in Phase 2"
-        />
-        <StatCard
-          icon={ClipboardCheck}
-          label="Today's Attendance"
-          value={`${stats.todaysAttendanceCount}`}
-          note="Starts tracking in Phase 3"
-        />
+        <StatCard icon={Wallet} label="This Month Collection" value={`₹${stats.monthCollection.toLocaleString("en-IN")}`} />
+        <StatCard icon={AlertCircle} label="Pending Fees" value={`₹${stats.pendingFees.toLocaleString("en-IN")}`} />
+        <StatCard icon={ClipboardCheck} label="Today's Attendance" value={`${stats.presentToday} / ${stats.expectedToday}`} />
       </div>
     </div>
   );
