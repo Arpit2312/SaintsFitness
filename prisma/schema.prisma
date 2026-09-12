@@ -254,6 +254,8 @@ model Attendance {
   createdAt DateTime         @default(now())
 
   @@unique([studentId, batchId, date])
+  @@index([studentId])
+  @@index([batchId])
 }
 
 model InstructorNote {
