@@ -21,7 +21,7 @@
 
 ---
 
-## Task 1: Schema migration — index Attendance's foreign keys
+## Task 1: Schema migration — index Attendance's foreign keys ✅ DONE (commit 8540e0b, reviewed and approved — additive-only migration, verified applied cleanly against the shared Neon DB)
 
 **Files:**
 - Modify: `prisma/schema.prisma`
@@ -111,7 +111,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 2: Shared UTC date helpers + attendance pure logic (TDD)
+## Task 2: Shared UTC date helpers + attendance pure logic (TDD) ✅ DONE (commit 2a02c6a, matched the plan byte-for-byte, reviewed and approved — all UTC/weekday arithmetic independently re-verified by the reviewer; `todayInIST()`'s missing test coverage, flagged in review, was closed as part of Task 3's fix commit since that fix needed the same fake-timer test infrastructure)
 
 **Files:**
 - Create: `src/lib/dates.ts`
@@ -396,7 +396,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 3: Validation schemas
+## Task 3: Validation schemas ✅ DONE (commit 0ed3d10, matched the plan byte-for-byte; fixed in bc74044 -- review found `notFutureDate`'s raw `d.getTime() <= Date.now()` comparison was a real bug, not the "generous by a full day" non-issue the plan's own comment claimed: for the ~5.5 hours each day between IST midnight and 05:30 IST, typing today's own IST calendar date coerces to a UTC-midnight instant *later* than the actual current UTC instant, wrongly rejecting it as a future date -- e.g. an admin marking attendance at 2am IST for a class earlier that same IST morning. Fixed by comparing calendar days via `todayInIST()` [Task 2] instead of raw `Date.now()`; independently re-derived and confirmed by both the orchestrating session and a follow-up re-review before and after the fix)
 
 **Files:**
 - Create: `src/lib/validations/attendance.ts`
@@ -406,12 +406,12 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 - Consumes: nothing from earlier tasks.
 - Produces: `attendanceStatusSchema`, `saveBatchAttendanceSchema` + `SaveBatchAttendanceInput` type, `markStudentAttendanceSchema` + `MarkStudentAttendanceInput` type — all from `src/lib/validations/attendance.ts`. Task 5 (actions), Task 6 (roster UI), and Task 7 (dialog) import these by these exact names.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/unit/attendance-validation.test.ts`:
 
 ```ts
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { saveBatchAttendanceSchema, markStudentAttendanceSchema } from "@/lib/validations/attendance";
 
 describe("saveBatchAttendanceSchema", () => {
@@ -463,9 +463,44 @@ describe("markStudentAttendanceSchema", () => {
     expect(markStudentAttendanceSchema.safeParse({ ...valid, batchId: "" }).success).toBe(false);
   });
 });
+
+describe("notFutureDate IST boundary (regression)", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("accepts today's IST calendar date even during the 00:00-05:30 IST window where raw UTC 'now' lags behind", () => {
+    // 2026-01-04T20:00:00Z = 2026-01-05 01:30 IST -- IST's calendar day is
+    // already the 5th, but the UTC-midnight instant for "2026-01-05" (what
+    // a naive `Date.now()` comparison would check against) is still ~4
+    // hours in the future relative to raw UTC "now". A date-only compare
+    // against todayInIST() must still accept this as "today", not "future".
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-04T20:00:00.000Z"));
+
+    const valid = {
+      batchId: "batch1",
+      date: "2026-01-05",
+      records: [{ studentId: "s1", status: "PRESENT" }],
+    };
+    expect(saveBatchAttendanceSchema.safeParse(valid).success).toBe(true);
+  });
+
+  it("still rejects a genuinely future IST calendar date during that same window", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-04T20:00:00.000Z")); // IST "today" = Jan 5
+
+    const future = {
+      batchId: "batch1",
+      date: "2026-01-06", // IST tomorrow
+      records: [{ studentId: "s1", status: "PRESENT" }],
+    };
+    expect(saveBatchAttendanceSchema.safeParse(future).success).toBe(false);
+  });
+});
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 ```bash
 npx vitest run tests/unit/attendance-validation.test.ts
@@ -473,21 +508,28 @@ npx vitest run tests/unit/attendance-validation.test.ts
 
 Expected: FAIL — `Cannot find module '@/lib/validations/attendance'`.
 
-- [ ] **Step 3: Implement `src/lib/validations/attendance.ts`**
+- [x] **Step 3: Implement `src/lib/validations/attendance.ts`**
 
 ```ts
 import { z } from "zod";
+import { startOfUTCDay, todayInIST } from "@/lib/dates";
 
 export const attendanceStatusSchema = z.enum(["PRESENT", "ABSENT", "LATE", "LEAVE"]);
 
-// `date` is compared against `new Date()` (the current instant) rather than
-// a UTC-midnight "today" -- a date typed via <input type="date"> coerces to
-// that day's UTC midnight, which is always <= the current instant for
-// today's own date or any past date, and > it for any future date. This is
-// intentionally simple: it does not need IST-awareness, since the boundary
-// it guards against (typing tomorrow's date) is generous by a full day in
-// either timezone direction.
-const notFutureDate = z.coerce.date().refine((d) => d.getTime() <= Date.now(), {
+// Compares calendar days, not instants: `d` (a date typed via <input
+// type="date">, coerced to that day's UTC midnight) is floored again
+// defensively via startOfUTCDay in case a caller ever passes a
+// non-midnight Date, then compared against todayInIST() -- also a
+// UTC-midnight instant, but standing for IST's current calendar day, per
+// this project's "today" convention (see src/components/layout/header.tsx's
+// currentHourInIST). Comparing against raw `Date.now()` instead (an
+// earlier version of this file did) is a real bug, not just a theoretical
+// one: IST is UTC+5:30, so for the ~5.5 hours each day from IST midnight to
+// 05:30 IST, "today" in the IST calendar coerces to a UTC-midnight instant
+// that is *later* than the actual current UTC instant, and gets wrongly
+// rejected as a future date -- e.g. an admin marking attendance at 2am IST
+// for a class that already happened that same IST morning.
+const notFutureDate = z.coerce.date().refine((d) => startOfUTCDay(d).getTime() <= todayInIST().getTime(), {
   message: "Cannot mark attendance for a future date",
 });
 
@@ -511,24 +553,24 @@ export const markStudentAttendanceSchema = z.object({
 export type MarkStudentAttendanceInput = z.infer<typeof markStudentAttendanceSchema>;
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 ```bash
 npx vitest run tests/unit/attendance-validation.test.ts
 ```
 
-Expected: all pass.
+Expected: all pass (9, after the IST-boundary fix added 2 more to the original 7).
 
-- [ ] **Step 5: Full regression + typecheck**
+- [x] **Step 5: Full regression + typecheck**
 
 ```bash
 npx vitest run
 npx tsc --noEmit
 ```
 
-Expected: clean.
+Expected: clean (112 tests total after the fix; `tsc` shows only the pre-existing, unrelated `LayoutProps` error caused by this worktree never having run `next build`/`next dev`).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A
@@ -536,6 +578,8 @@ git commit -m "Add attendance validation schemas
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 ```
+
+**Post-review fix (`bc74044`):** also added `todayInIST()` test coverage to `tests/unit/dates.test.ts` (Task 2 had zero coverage for it, flagged in Task 2's own review as a gap) using the same `vi.useFakeTimers()` infrastructure the IST-boundary regression test above needed anyway.
 
 ---
 
