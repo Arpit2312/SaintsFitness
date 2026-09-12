@@ -374,7 +374,7 @@ export function computeAttendanceRate(records: { status: AttendanceStatus }[]): 
 npx vitest run tests/unit/dates.test.ts tests/unit/attendance-schedule.test.ts tests/unit/attendance-rate.test.ts
 ```
 
-Expected: all pass, 13 tests total.
+Expected: all pass, 16 tests total (7 + 4 + 5).
 
 - [ ] **Step 13: Verify no regressions and typecheck**
 
