@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { sendFeeReminder } from "@/actions/reminders";
-import { buildReminderMessage } from "@/lib/reminders/message";
 import { formatDateUTC } from "@/lib/dates";
 import { toast } from "sonner";
 
@@ -37,8 +36,7 @@ export function RemindersList({ students }: { students: PendingFeeStudent[] }) {
   async function handleSend(student: PendingFeeStudent) {
     setSendingId(student.studentId);
     try {
-      await sendFeeReminder(student.studentId);
-      const message = buildReminderMessage(student.name, student.totalPending);
+      const { message } = await sendFeeReminder(student.studentId);
       const url = `https://wa.me/91${student.mobile}?text=${encodeURIComponent(message)}`;
       window.open(url, "_blank");
       toast.success("Reminder logged");
