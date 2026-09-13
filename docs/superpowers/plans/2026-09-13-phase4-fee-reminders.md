@@ -411,7 +411,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 5: Fee Reminders page (UI)
+## Task 5: Fee Reminders page (UI) ✅ DONE (commit 6e4cefb, matched the plan byte-for-byte; review caught a real staleness bug baked into the plan's own code — `handleSend` built the WhatsApp message from the client's cached `student.totalPending` instead of `sendFeeReminder`'s freshly-recomputed return value, risking drift from the DB-logged message if a payment landed between page render and click; fixed in commit 07832fe to destructure `message` from the action's return instead, closing the race; re-reviewed and confirmed no regressions)
 
 **Files:**
 - Create: `src/components/reminders/reminders-list.tsx`
@@ -433,7 +433,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { sendFeeReminder } from "@/actions/reminders";
-import { buildReminderMessage } from "@/lib/reminders/message";
 import { formatDateUTC } from "@/lib/dates";
 import { toast } from "sonner";
 
@@ -463,8 +462,7 @@ export function RemindersList({ students }: { students: PendingFeeStudent[] }) {
   async function handleSend(student: PendingFeeStudent) {
     setSendingId(student.studentId);
     try {
-      await sendFeeReminder(student.studentId);
-      const message = buildReminderMessage(student.name, student.totalPending);
+      const { message } = await sendFeeReminder(student.studentId);
       const url = `https://wa.me/91${student.mobile}?text=${encodeURIComponent(message)}`;
       window.open(url, "_blank");
       toast.success("Reminder logged");
