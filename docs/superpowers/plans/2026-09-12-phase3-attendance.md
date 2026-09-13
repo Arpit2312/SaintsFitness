@@ -868,7 +868,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 6: Attendance roster page (batch roll-call UI) ✅ DONE (commit bfdafa2, matched the plan byte-for-byte [plus an established, pre-existing `as string` cast on a Select's onValueChange, matching batch-form-dialog.tsx's convention]; fixed in 02d2be0 -- review found a real, non-hypothetical bug baked into the plan's own code: `statuses` was seeded via a `useState` lazy initializer, which only runs on first mount, but Next.js App Router doesn't remount this component on a searchParams-only navigation [changing date/batch] -- so switching dates left stale local statuses in place, and an unsaved toggle from one date could silently get written to a different date on the next save. Fixed with a `useEffect(() => setStatuses(...), [roster])` re-seed, mirroring this codebase's own established dialog-reset pattern; also added `aria-pressed` to the status buttons for a flagged accessibility gap. Re-review confirmed the fix at the React/Next.js mechanics level and noted one narrow, non-blocking edge case for awareness: status edits made during the brief save-then-refresh round-trip window get discarded rather than surviving, since the effect now always resyncs from the server's persisted truth -- judged an acceptable, defensible default, not a regression of the original bug)
+## Task 6: Attendance roster page (batch roll-call UI) ✅ DONE (commit bfdafa2, matched the plan byte-for-byte [plus an established, pre-existing `as string` cast on a Select's onValueChange, matching batch-form-dialog.tsx's convention]; fixed in 02d2be0 -- review found a real, non-hypothetical bug baked into the plan's own code: `statuses` was seeded via a `useState` lazy initializer, which only runs on first mount, but Next.js App Router doesn't remount this component on a searchParams-only navigation [changing date/batch] -- so switching dates left stale local statuses in place, and an unsaved toggle from one date could silently get written to a different date on the next save. First fix attempt used a `useEffect(() => setStatuses(...), [roster])` re-seed, mirroring this codebase's own established dialog-reset pattern, and also added `aria-pressed` to the status buttons for a flagged accessibility gap; a re-review confirmed it worked correctly but noted a narrow, non-blocking edge case (status edits during the save-then-refresh round-trip window get discarded). **Superseded in 9f5dc6e** -- the final whole-phase review caught that the `useEffect`+`setState` approach had introduced a genuine new `react-hooks/set-state-in-effect` eslint error (a real regression the plan's own Task 9 verification had incorrectly claimed didn't exist); replaced with a simpler, lint-clean fix: `page.tsx` now keys `<AttendanceRoster>` by `${selectedBatchId}-${date}`, so React remounts the component on navigation instead, letting the existing `useState` lazy initializer handle the reset naturally with no effect needed at all)
 
 **Files:**
 - Create: `src/components/attendance/attendance-roster.tsx`
@@ -883,7 +883,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 ```tsx
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -935,18 +935,16 @@ export function AttendanceRoster({
   // Local edit buffer: studentId -> status, seeded from the roster's saved
   // statuses. A student with no saved record for this date (`status: null`
   // from getBatchRosterForDate) defaults to PRESENT here for display only --
-  // nothing is written until Save Attendance is clicked.
+  // nothing is written until Save Attendance is clicked. The parent page.tsx
+  // keys this component by date+batch, so React remounts (not just
+  // re-props) on navigation and this initializer re-runs with the fresh
+  // roster -- without that key, a searchParams-only navigation wouldn't
+  // remount the component and this state would go stale across date/batch
+  // changes (caught in review; a remount is simpler and lint-clean compared
+  // to an effect that calls setState to resync).
   const [statuses, setStatuses] = useState<Record<string, AttendanceStatus>>(() =>
     Object.fromEntries((roster?.roster ?? []).map((r) => [r.studentId, r.status ?? "PRESENT"]))
   );
-  // The roster prop changes on every date/batch navigation, but Next.js does
-  // not remount this component for a searchParams-only navigation -- so the
-  // lazy useState initializer above only runs once, on first mount. Without
-  // this effect, switching date/batch would leave `statuses` holding stale
-  // data (or unsaved local toggles) from the PREVIOUS roster.
-  useEffect(() => {
-    setStatuses(Object.fromEntries((roster?.roster ?? []).map((r) => [r.studentId, r.status ?? "PRESENT"])));
-  }, [roster]);
 
   function navigate(nextDate: string, nextBatchId?: string) {
     const params = new URLSearchParams();
@@ -1074,8 +1072,21 @@ export default async function AttendancePage({
   const selectedBatchId = params.batchId ?? batches.find((b) => b.scheduledToday)?.id ?? batches[0]?.id ?? null;
   const roster = selectedBatchId ? await getBatchRosterForDate(selectedBatchId, date) : null;
 
+  // Keyed by date+batch so React remounts AttendanceRoster on navigation
+  // instead of patching new props into the same instance -- a Next.js
+  // searchParams-only navigation does NOT remount by default, which left
+  // its local `statuses` state stale until Task 6's review caught it. A
+  // fresh mount naturally re-runs the component's useState initializer with
+  // the new roster, which is simpler and lint-clean compared to an effect
+  // that calls setState to resync (react-hooks/set-state-in-effect).
   return (
-    <AttendanceRoster date={date} batches={batches} selectedBatchId={selectedBatchId} roster={roster} />
+    <AttendanceRoster
+      key={`${selectedBatchId ?? "none"}-${date.toISOString().slice(0, 10)}`}
+      date={date}
+      batches={batches}
+      selectedBatchId={selectedBatchId}
+      roster={roster}
+    />
   );
 }
 ```
@@ -1110,7 +1121,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 7: Mark Attendance dialog + Student profile Attendance tab ✅ DONE (commit 0b9c929, matched the plan byte-for-byte [plus the same established `as string` cast convention as Task 6], reviewed and approved -- the empty-enrolledBatches dialog scenario, the Date-vs-Decimal RSC-boundary question, and zero-history rendering were all traced through and confirmed correct, no fixes needed)
+## Task 7: Mark Attendance dialog + Student profile Attendance tab ✅ DONE (commit 0b9c929, matched the plan byte-for-byte [plus the same established `as string` cast convention as Task 6], reviewed and approved -- the empty-enrolledBatches dialog scenario, the Date-vs-Decimal RSC-boundary question, and zero-history rendering were all traced through and confirmed correct, no fixes needed at the time. **Amended in 9f5dc6e** -- the final whole-phase review caught a status-label casing inconsistency across the three attendance UI surfaces: this tab's history table rendered the raw enum value ["PRESENT"] while `AttendanceRoster`/`MarkAttendanceDialog` both already showed Title Case ["Present"] -- fixed by adding the same `STATUS_LABELS` map here too)
 
 **Files:**
 - Create: `src/components/attendance/mark-attendance-dialog.tsx`
@@ -1294,6 +1305,16 @@ const STATUS_COLORS: Record<AttendanceStatus, string> = {
   LATE: "border-warning text-warning",
   LEAVE: "border-muted text-muted",
 };
+// Matches AttendanceRoster/MarkAttendanceDialog's Title Case labels -- this
+// table used to render the raw enum value (e.g. "PRESENT") while the other
+// two attendance surfaces already showed "Present", an inconsistency caught
+// in the final phase-wide review.
+const STATUS_LABELS: Record<AttendanceStatus, string> = {
+  PRESENT: "Present",
+  ABSENT: "Absent",
+  LATE: "Late",
+  LEAVE: "Leave",
+};
 
 export type AttendanceHistoryRecord = {
   id: string;
@@ -1347,7 +1368,7 @@ export function StudentAttendanceTab({
                   <td className="p-3 text-muted">{record.batchName}</td>
                   <td className="p-3">
                     <Badge variant="outline" className={STATUS_COLORS[record.status]}>
-                      {record.status}
+                      {STATUS_LABELS[record.status]}
                     </Badge>
                   </td>
                 </tr>
@@ -1610,7 +1631,9 @@ npx next build
 
 Expected: every test passes (Phase 1+2's baseline plus this phase's new date/schedule/rate/validation tests); `tsc`/`eslint` clean or matching the pre-existing baseline with no new errors/warnings from this phase's files; `next build` clean with `/attendance` present in the route table (and `/students/[id]`, `/dashboard` still present).
 
-**Result:** `npx vitest run` — 112/112 tests, 14/14 files. `npx tsc --noEmit` — one pre-existing error (`src/app/layout.tsx(21,50): Cannot find name 'LayoutProps'`, caused solely by this worktree never having run `next build`/`next dev` before, so `.next/types` didn't exist yet — resolved the moment `next build` below actually ran). `npx eslint .` — 14 problems (2 errors, 12 warnings), all in pre-existing Phase 1/2 files untouched by this phase (`confirm-dialog.tsx`, `student-form.tsx`, three test files) — matches the established baseline, zero new findings from any Phase 3 file. `npx next build` — clean, full route table present including `/attendance`, `/students/[id]`, `/dashboard`.
+**Result:** `npx vitest run` — 112/112 tests, 14/14 files. `npx tsc --noEmit` — one pre-existing error (`src/app/layout.tsx(21,50): Cannot find name 'LayoutProps'`, caused solely by this worktree never having run `next build`/`next dev` before, so `.next/types` didn't exist yet — resolved the moment `next build` below actually ran). `npx next build` — clean, full route table present including `/attendance`, `/students/[id]`, `/dashboard`.
+
+**Correction (found by the final whole-phase review, commit 9f5dc6e):** this task originally claimed `npx eslint .` showed "14 problems (2 errors, 12 warnings), zero new findings from any Phase 3 file" — that was wrong. One of the two errors was a genuine new `react-hooks/set-state-in-effect` finding in `attendance-roster.tsx`, flagging Task 6's own `useEffect(() => setStatuses(...), [roster])` stale-state fix. Fixed by keying `AttendanceRoster` by date+batch in `page.tsx` so React remounts the component on navigation instead (letting the existing `useState` lazy initializer handle the reset naturally) rather than resyncing via an effect -- simpler and lint-clean. `npx eslint .` now correctly shows 13 problems (1 error, 12 warnings), matching the actual Phase 1/2 baseline with zero new findings. The same review also caught a status-label casing inconsistency (`StudentAttendanceTab`'s history table showed the raw enum value "PRESENT" while `AttendanceRoster`/`MarkAttendanceDialog` both already showed Title Case "Present") -- fixed by adding the same `STATUS_LABELS` map there.
 
 - [x] **Step 2: End-to-end verification**
 
@@ -1632,3 +1655,5 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 ## Post-plan check
 
 At the end of this plan: admins can mark attendance for a whole batch on any date via roll-call, or a single student from their profile; a student's profile shows their attendance history and rate; the Dashboard's "Today's Attendance" and "Today's Classes" cards show real, schedule-aware numbers for the first time. Fee Reminders (Phase 4), Reports (Phase 5), and SAINTS Journey (Phase 6) are the next phases; Reports will likely want attendance trend queries beyond this phase's single rate figure, building on `computeAttendanceRate`/`isBatchScheduledOn` rather than duplicating them.
+
+A final whole-phase review (post-9-tasks, pre-merge) additionally: confirmed no Decimal/non-serializable type crosses any Server→Client boundary in this phase's new code; confirmed the `dates.ts` (day/weekday-level) vs `fees/periods.ts` (month-level) UTC-helper split is a clean, non-duplicative boundary with no import confusion in `dashboard.ts`; confirmed the Dashboard's `pendingFees` line (a pre-existing, out-of-scope Phase 1 bug) is genuinely untouched; and confirmed this branch's diff footprint touches nothing outside its own expected files. It caught and fixed two real issues (documented above, in Tasks 6/7): a genuine new `react-hooks/set-state-in-effect` eslint error the plan's own Task 9 verification had incorrectly claimed didn't exist, and a status-label casing inconsistency across the three attendance UI surfaces. It also flagged, as non-blocking follow-up candidates rather than defects: `saveBatchAttendance`/`markStudentAttendance`/`getStudentEnrolledBatches` use three different (all individually correct) Prisma call shapes for the same "enrollment not soft-deleted" check, worth consolidating into one shared helper; the two attendance date-pickers' client-side `max` attribute uses browser-local time rather than IST (server-side validation via `todayInIST()` is authoritative, so this is cosmetic only); and the soft-delete/enrollment-guard fixes in `src/actions/attendance.ts` have no permanent regression test (verified only via now-deleted manual DB scripts) -- an accepted, convention-consistent gap given this codebase's established pattern of not unit-testing thin action wrappers, but worth an exception given the severity of what was found there.
