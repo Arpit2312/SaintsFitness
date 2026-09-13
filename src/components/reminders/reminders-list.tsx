@@ -10,13 +10,19 @@ import { sendFeeReminder } from "@/actions/reminders";
 import { formatDateUTC } from "@/lib/dates";
 import { toast } from "sonner";
 
-// Same 3-value color map as fees-list.tsx (OVERDUE/PARTIAL/DUE are the only
-// statuses that can appear here -- this list only ever shows students with
-// totalPending > 0).
+// Same 3-value color/label maps as fees-list.tsx (OVERDUE/PARTIAL/DUE are the
+// only statuses that can appear here -- this list only ever shows students
+// with totalPending > 0).
 const STATUS_COLORS: Record<string, string> = {
   OVERDUE: "border-danger text-danger",
   PARTIAL: "border-warning text-warning",
   DUE: "border-muted text-muted",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  OVERDUE: "Overdue",
+  PARTIAL: "Partial",
+  DUE: "Due",
 };
 
 export type PendingFeeStudent = {
@@ -67,7 +73,7 @@ export function RemindersList({ students }: { students: PendingFeeStudent[] }) {
               </div>
               <div className="flex items-center gap-3">
                 <Badge variant="outline" className={STATUS_COLORS[student.status]}>
-                  {student.status}
+                  {STATUS_LABELS[student.status] ?? student.status}
                 </Badge>
                 <Button
                   variant="outline"
