@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -56,6 +56,14 @@ export function AttendanceRoster({
   const [statuses, setStatuses] = useState<Record<string, AttendanceStatus>>(() =>
     Object.fromEntries((roster?.roster ?? []).map((r) => [r.studentId, r.status ?? "PRESENT"]))
   );
+  // The roster prop changes on every date/batch navigation, but Next.js does
+  // not remount this component for a searchParams-only navigation -- so the
+  // lazy useState initializer above only runs once, on first mount. Without
+  // this effect, switching date/batch would leave `statuses` holding stale
+  // data (or unsaved local toggles) from the PREVIOUS roster.
+  useEffect(() => {
+    setStatuses(Object.fromEntries((roster?.roster ?? []).map((r) => [r.studentId, r.status ?? "PRESENT"])));
+  }, [roster]);
 
   function navigate(nextDate: string, nextBatchId?: string) {
     const params = new URLSearchParams();
@@ -142,6 +150,7 @@ export function AttendanceRoster({
                         size="xs"
                         variant={selected ? "default" : "outline"}
                         className={selected ? STATUS_SELECTED_CLASSES[status] : undefined}
+                        aria-pressed={selected}
                         onClick={() => setStatuses((prev) => ({ ...prev, [student.studentId]: status }))}
                       >
                         {STATUS_LABELS[status]}
