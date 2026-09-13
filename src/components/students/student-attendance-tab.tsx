@@ -16,6 +16,16 @@ const STATUS_COLORS: Record<AttendanceStatus, string> = {
   LATE: "border-warning text-warning",
   LEAVE: "border-muted text-muted",
 };
+// Matches AttendanceRoster/MarkAttendanceDialog's Title Case labels -- this
+// table used to render the raw enum value (e.g. "PRESENT") while the other
+// two attendance surfaces already showed "Present", an inconsistency caught
+// in the final phase-wide review.
+const STATUS_LABELS: Record<AttendanceStatus, string> = {
+  PRESENT: "Present",
+  ABSENT: "Absent",
+  LATE: "Late",
+  LEAVE: "Leave",
+};
 
 export type AttendanceHistoryRecord = {
   id: string;
@@ -69,7 +79,7 @@ export function StudentAttendanceTab({
                   <td className="p-3 text-muted">{record.batchName}</td>
                   <td className="p-3">
                     <Badge variant="outline" className={STATUS_COLORS[record.status]}>
-                      {record.status}
+                      {STATUS_LABELS[record.status]}
                     </Badge>
                   </td>
                 </tr>

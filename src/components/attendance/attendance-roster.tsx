@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -52,18 +52,16 @@ export function AttendanceRoster({
   // Local edit buffer: studentId -> status, seeded from the roster's saved
   // statuses. A student with no saved record for this date (`status: null`
   // from getBatchRosterForDate) defaults to PRESENT here for display only --
-  // nothing is written until Save Attendance is clicked.
+  // nothing is written until Save Attendance is clicked. The parent page.tsx
+  // keys this component by date+batch, so React remounts (not just
+  // re-props) on navigation and this initializer re-runs with the fresh
+  // roster -- without that key, a searchParams-only navigation wouldn't
+  // remount the component and this state would go stale across date/batch
+  // changes (caught in review; a remount is simpler and lint-clean compared
+  // to an effect that calls setState to resync).
   const [statuses, setStatuses] = useState<Record<string, AttendanceStatus>>(() =>
     Object.fromEntries((roster?.roster ?? []).map((r) => [r.studentId, r.status ?? "PRESENT"]))
   );
-  // The roster prop changes on every date/batch navigation, but Next.js does
-  // not remount this component for a searchParams-only navigation -- so the
-  // lazy useState initializer above only runs once, on first mount. Without
-  // this effect, switching date/batch would leave `statuses` holding stale
-  // data (or unsaved local toggles) from the PREVIOUS roster.
-  useEffect(() => {
-    setStatuses(Object.fromEntries((roster?.roster ?? []).map((r) => [r.studentId, r.status ?? "PRESENT"])));
-  }, [roster]);
 
   function navigate(nextDate: string, nextBatchId?: string) {
     const params = new URLSearchParams();
