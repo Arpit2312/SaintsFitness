@@ -160,6 +160,7 @@ model Student {
   notes            InstructorNote[]
   journeyProgress  JourneyProgress?
   notifications    Notification[]
+  feeReminders     FeeReminder[]
 }
 
 model Address {
@@ -286,6 +287,17 @@ model Notification {
   message   String
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
+}
+
+model FeeReminder {
+  id                  String   @id @default(cuid())
+  studentId           String
+  student             Student  @relation(fields: [studentId], references: [id])
+  sentAt              DateTime @default(now())
+  pendingAmountAtSend Decimal  @db.Decimal(10, 2)
+  message             String
+
+  @@index([studentId])
 }
 
 // Atomic counter used for Student IDs (ST-00001) and Receipt numbers (SNT-2026-00001)
