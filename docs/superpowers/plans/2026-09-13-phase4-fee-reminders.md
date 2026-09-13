@@ -196,7 +196,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 3: Reminder queries (server-only reads)
+## Task 3: Reminder queries (server-only reads) ✅ DONE (commit 7ed1aa1, matched the plan byte-for-byte, reviewed and approved — soft-delete safety confirmed to flow from `listStudentFeeStatuses`'s own `deletedAt: null` filter, in-memory join and worst-first sort verified correct, no N+1)
 
 **Files:**
 - Create: `src/lib/queries/reminders.ts`
@@ -306,7 +306,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 4: Reminder actions (mutations)
+## Task 4: Reminder actions (mutations) ✅ DONE (commit bd4f15a, matched the plan byte-for-byte, reviewed and approved — independently re-verified all 8 real-DB scenarios including log-not-upsert behavior, soft-delete guard, and the three rejection error messages)
 
 **Files:**
 - Create: `src/actions/reminders.ts`
