@@ -5,6 +5,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
 import { getStudentFeeHistory } from "@/lib/queries/fees";
 import { StudentFeesTab } from "@/components/students/student-fees-tab";
+import { getStudentAttendanceHistory, getStudentEnrolledBatches } from "@/lib/queries/attendance";
+import { StudentAttendanceTab } from "@/components/students/student-attendance-tab";
 
 function ComingSoon({ label }: { label: string }) {
   return (
@@ -20,7 +22,12 @@ export default async function StudentProfilePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [student, feeHistory] = await Promise.all([getStudent(id), getStudentFeeHistory(id)]);
+  const [student, feeHistory, attendanceHistory, enrolledBatches] = await Promise.all([
+    getStudent(id),
+    getStudentFeeHistory(id),
+    getStudentAttendanceHistory(id),
+    getStudentEnrolledBatches(id),
+  ]);
   if (!student) notFound();
 
   const enrollment = student.enrollments[0];
@@ -125,7 +132,12 @@ export default async function StudentProfilePage({
         </TabsContent>
 
         <TabsContent value="attendance">
-          <ComingSoon label="Attendance" />
+          <StudentAttendanceTab
+            studentId={student.id}
+            records={attendanceHistory.records}
+            rate={attendanceHistory.rate}
+            enrolledBatches={enrolledBatches}
+          />
         </TabsContent>
 
         <TabsContent value="classes" className="glass-card space-y-2 p-6">
