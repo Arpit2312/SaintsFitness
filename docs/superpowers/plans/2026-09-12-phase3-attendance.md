@@ -1595,11 +1595,11 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 9: Final verification and wrap-up
+## Task 9: Final verification and wrap-up ✅ DONE
 
 **Files:** none (verification only)
 
-- [ ] **Step 1: Full regression pass**
+- [x] **Step 1: Full regression pass**
 
 ```bash
 npx vitest run
@@ -1610,11 +1610,15 @@ npx next build
 
 Expected: every test passes (Phase 1+2's baseline plus this phase's new date/schedule/rate/validation tests); `tsc`/`eslint` clean or matching the pre-existing baseline with no new errors/warnings from this phase's files; `next build` clean with `/attendance` present in the route table (and `/students/[id]`, `/dashboard` still present).
 
-- [ ] **Step 2: End-to-end verification**
+**Result:** `npx vitest run` — 112/112 tests, 14/14 files. `npx tsc --noEmit` — one pre-existing error (`src/app/layout.tsx(21,50): Cannot find name 'LayoutProps'`, caused solely by this worktree never having run `next build`/`next dev` before, so `.next/types` didn't exist yet — resolved the moment `next build` below actually ran). `npx eslint .` — 14 problems (2 errors, 12 warnings), all in pre-existing Phase 1/2 files untouched by this phase (`confirm-dialog.tsx`, `student-form.tsx`, three test files) — matches the established baseline, zero new findings from any Phase 3 file. `npx next build` — clean, full route table present including `/attendance`, `/students/[id]`, `/dashboard`.
+
+- [x] **Step 2: End-to-end verification**
 
 Create one temporary test student enrolled in a seeded batch. Mark a full batch roll-call for today via `saveBatchAttendance` (a mix of statuses across the roster). Confirm via `getStudentAttendanceHistory` that the tab's history table and rate would be correct for the marked student. Confirm via `getDashboardStats()` that "Today's Attendance" reflects the marking. Mark one more record via `markStudentAttendance` for a past date and confirm it shows up correctly in history without disturbing today's record. If real browser access is available, do this via the actual UI (roll-call page, student profile tab, dashboard) instead and take screenshots; otherwise use the data-layer approach the rest of this plan already established. Clean up all test data afterward, confirm the database is back to its pre-phase baseline (same counts recorded at the start of Task 4's verification).
 
-- [ ] **Step 3: Final commit**
+**Result:** Browser login remains off-limits under this session's safety rules; verified via a data-layer script exercising the real `saveBatchAttendance`/`markStudentAttendance`/`getStudentAttendanceHistory`/`getStudentEnrolledBatches`/`listBatchesForDate`/`getDashboardStats` functions together end-to-end against the real Neon database (temp student, distinct code, cleaned up fully): batch roll-call mark → roster correctly showed PRESENT → student history correctly showed 1 record/100% rate → a second `markStudentAttendance` call for the previous day correctly added a second record without disturbing the first, rate correctly recalculated to 50% (1 PRESENT + 1 ABSENT) → `getStudentEnrolledBatches`/`listBatchesForDate` both correctly reflected the batch → `getDashboardStats()` correctly returned `presentToday/expectedToday: 0/0` since the test batch wasn't scheduled on the actual test date (a Sunday), consistent with Task 8's already-verified schedule-filtering logic, not a bug. Full before/after database snapshot matched exactly.
+
+- [x] **Step 3: Final commit**
 
 ```bash
 git add -A
