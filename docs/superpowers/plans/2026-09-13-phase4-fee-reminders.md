@@ -20,7 +20,7 @@
 
 ---
 
-## Task 1: Schema migration — add the FeeReminder model
+## Task 1: Schema migration — add the FeeReminder model ✅ DONE (commit 707129d, matched the plan byte-for-byte, reviewed and approved — additive-only, correctly includes `@@index([studentId])` from day one [applying the lesson from Phase 3's Attendance table, which needed a follow-up migration for the same index], `Decimal(10,2)` precision consistent with existing money columns)
 
 **Files:**
 - Modify: `prisma/schema.prisma`
@@ -29,7 +29,7 @@
 **Interfaces:**
 - Produces: the `FeeReminder` Prisma model, used by Tasks 3 and 4.
 
-- [ ] **Step 1: Add the `FeeReminder` model**
+- [x] **Step 1: Add the `FeeReminder` model**
 
 In `prisma/schema.prisma`, add this new model (place it near `Notification`, e.g. right after it):
 
@@ -55,7 +55,7 @@ Also add the back-reference on `Student` (find the existing `notifications Notif
 
 This is additive only — no existing model's fields change. The `@@index([studentId])` is added from the start (unlike Phase 3's `Attendance`, which needed a follow-up migration to add this after the fact) since this table will be queried by `studentId` from day one.
 
-- [ ] **Step 2: Generate the migration SQL (non-interactive-safe)**
+- [x] **Step 2: Generate the migration SQL (non-interactive-safe)**
 
 `prisma migrate dev` fails in a non-interactive shell — this has bitten every phase's Task 1 so far. Use the diff-based workaround:
 
@@ -65,7 +65,7 @@ npx prisma migrate diff --from-schema-datasource --to-schema-datamodel --script 
 
 Expected output: SQL that creates the `FeeReminder` table (with its columns, the FK to `Student`, and the index) and nothing else. If it contains anything else, stop and investigate — it means `schema.prisma` has an unrelated pending change.
 
-- [ ] **Step 3: Place the migration and deploy it**
+- [x] **Step 3: Place the migration and deploy it**
 
 Create `prisma/migrations/<YYYYMMDDHHMMSS>_add_fee_reminder/migration.sql` (current UTC time, matching the existing migration folders' naming convention) with the SQL from Step 2, then:
 
@@ -76,7 +76,7 @@ npx prisma migrate status
 
 Expected: `migrate deploy` reports the new migration applied; `migrate status` reports "Database schema is up to date!" with no drift.
 
-- [ ] **Step 4: Regenerate the Prisma client and verify**
+- [x] **Step 4: Regenerate the Prisma client and verify**
 
 ```bash
 npx prisma generate
@@ -85,7 +85,7 @@ npx tsc --noEmit
 
 Expected: clean.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A
@@ -96,7 +96,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 2: Reminder message builder (TDD)
+## Task 2: Reminder message builder (TDD) ✅ DONE (commit 7394539, matched the plan byte-for-byte, reviewed and approved — Indian-style digit grouping independently verified in Node, negative/NaN edge cases confirmed unreachable given `computeFeeHistory`'s `Decimal.max(...,0)` floor on `totalPending`)
 
 **Files:**
 - Create: `src/lib/reminders/message.ts`
@@ -106,7 +106,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 - Consumes: nothing from earlier tasks.
 - Produces: `buildReminderMessage(name: string, pendingAmount: number): string` from `src/lib/reminders/message.ts`. Tasks 4 and 5 import this by this exact name/signature.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/unit/reminders-message.test.ts`:
 
@@ -137,7 +137,7 @@ describe("buildReminderMessage", () => {
 });
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 ```bash
 npx vitest run tests/unit/reminders-message.test.ts
@@ -145,7 +145,7 @@ npx vitest run tests/unit/reminders-message.test.ts
 
 Expected: FAIL — `Cannot find module '@/lib/reminders/message'`.
 
-- [ ] **Step 3: Implement `src/lib/reminders/message.ts`**
+- [x] **Step 3: Implement `src/lib/reminders/message.ts`**
 
 ```ts
 /**
@@ -168,7 +168,7 @@ export function buildReminderMessage(name: string, pendingAmount: number): strin
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 ```bash
 npx vitest run tests/unit/reminders-message.test.ts
@@ -176,7 +176,7 @@ npx vitest run tests/unit/reminders-message.test.ts
 
 Expected: all pass.
 
-- [ ] **Step 5: Full regression + typecheck**
+- [x] **Step 5: Full regression + typecheck**
 
 ```bash
 npx vitest run
@@ -185,7 +185,7 @@ npx tsc --noEmit
 
 Expected: clean.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A
