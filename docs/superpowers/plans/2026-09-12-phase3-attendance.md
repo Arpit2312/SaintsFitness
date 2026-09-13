@@ -868,7 +868,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 6: Attendance roster page (batch roll-call UI)
+## Task 6: Attendance roster page (batch roll-call UI) ✅ DONE (commit bfdafa2, matched the plan byte-for-byte [plus an established, pre-existing `as string` cast on a Select's onValueChange, matching batch-form-dialog.tsx's convention]; fixed in 02d2be0 -- review found a real, non-hypothetical bug baked into the plan's own code: `statuses` was seeded via a `useState` lazy initializer, which only runs on first mount, but Next.js App Router doesn't remount this component on a searchParams-only navigation [changing date/batch] -- so switching dates left stale local statuses in place, and an unsaved toggle from one date could silently get written to a different date on the next save. Fixed with a `useEffect(() => setStatuses(...), [roster])` re-seed, mirroring this codebase's own established dialog-reset pattern; also added `aria-pressed` to the status buttons for a flagged accessibility gap. Re-review confirmed the fix at the React/Next.js mechanics level and noted one narrow, non-blocking edge case for awareness: status edits made during the brief save-then-refresh round-trip window get discarded rather than surviving, since the effect now always resyncs from the server's persisted truth -- judged an acceptable, defensible default, not a regression of the original bug)
 
 **Files:**
 - Create: `src/components/attendance/attendance-roster.tsx`
@@ -878,12 +878,12 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 - Consumes: `listBatchesForDate`, `getBatchRosterForDate` (`@/lib/queries/attendance`); `saveBatchAttendance` (`@/actions/attendance`); `todayInIST` (`@/lib/dates`).
 - Produces: `AttendanceRoster` component (`@/components/attendance/attendance-roster`), consumed only by this task's own page.
 
-- [ ] **Step 1: Write `src/components/attendance/attendance-roster.tsx`**
+- [x] **Step 1: Write `src/components/attendance/attendance-roster.tsx`**
 
 ```tsx
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -939,6 +939,14 @@ export function AttendanceRoster({
   const [statuses, setStatuses] = useState<Record<string, AttendanceStatus>>(() =>
     Object.fromEntries((roster?.roster ?? []).map((r) => [r.studentId, r.status ?? "PRESENT"]))
   );
+  // The roster prop changes on every date/batch navigation, but Next.js does
+  // not remount this component for a searchParams-only navigation -- so the
+  // lazy useState initializer above only runs once, on first mount. Without
+  // this effect, switching date/batch would leave `statuses` holding stale
+  // data (or unsaved local toggles) from the PREVIOUS roster.
+  useEffect(() => {
+    setStatuses(Object.fromEntries((roster?.roster ?? []).map((r) => [r.studentId, r.status ?? "PRESENT"])));
+  }, [roster]);
 
   function navigate(nextDate: string, nextBatchId?: string) {
     const params = new URLSearchParams();
@@ -980,7 +988,13 @@ export function AttendanceRoster({
             onChange={(e) => navigate(e.target.value, selectedBatchId ?? undefined)}
             className="w-40"
           />
-          <Select value={selectedBatchId ?? undefined} onValueChange={(v) => navigate(toDateInputValue(date), v)}>
+          <Select
+            value={selectedBatchId ?? undefined}
+            // base-ui types onValueChange's value as `string | null`, but no real
+            // call site emits null in single-select mode -- see batch-form-dialog.tsx
+            // for the fuller rationale.
+            onValueChange={(v) => navigate(toDateInputValue(date), v as string)}
+          >
             <SelectTrigger className="w-56">
               <SelectValue placeholder="Select a batch">
                 {(value: string) => batches.find((b) => b.id === value)?.name ?? "Select a batch"}
@@ -1019,6 +1033,7 @@ export function AttendanceRoster({
                         size="xs"
                         variant={selected ? "default" : "outline"}
                         className={selected ? STATUS_SELECTED_CLASSES[status] : undefined}
+                        aria-pressed={selected}
                         onClick={() => setStatuses((prev) => ({ ...prev, [student.studentId]: status }))}
                       >
                         {STATUS_LABELS[status]}
@@ -1039,7 +1054,7 @@ export function AttendanceRoster({
 }
 ```
 
-- [ ] **Step 2: Rewrite `src/app/(app)/attendance/page.tsx`**
+- [x] **Step 2: Rewrite `src/app/(app)/attendance/page.tsx`**
 
 Replace the Phase 1 `PhaseStub` placeholder entirely:
 
@@ -1065,7 +1080,7 @@ export default async function AttendancePage({
 }
 ```
 
-- [ ] **Step 3: Verify it compiles**
+- [x] **Step 3: Verify it compiles**
 
 ```bash
 npx tsc --noEmit
@@ -1073,18 +1088,18 @@ npx tsc --noEmit
 
 Expected: clean.
 
-- [ ] **Step 4: Verify manually**
+- [x] **Step 4: Verify manually**
 
 Since a logged-in browser click-through may not be available in your environment (a prior phase in this project hit that exact restriction and substituted direct data-layer verification instead), verify via a temporary script exercising `listBatchesForDate`/`getBatchRosterForDate`/`saveBatchAttendance` together end-to-end against the real database, using a temporary test student, mirroring the same scenario a real click-through would exercise: load the page's data for today with no `batchId` in params (confirm it defaults to a scheduled-today batch if one exists, else the first batch alphabetically), simulate marking one student ABSENT and saving, then re-fetch and confirm the roster reflects it. If you do have real browser access, use it and take a screenshot instead. Clean up all test data afterward.
 
-- [ ] **Step 5: Run full regression**
+- [x] **Step 5: Run full regression**
 
 ```bash
 npx vitest run
 npx tsc --noEmit
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A
@@ -1095,7 +1110,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 7: Mark Attendance dialog + Student profile Attendance tab
+## Task 7: Mark Attendance dialog + Student profile Attendance tab ✅ DONE (commit 0b9c929, matched the plan byte-for-byte [plus the same established `as string` cast convention as Task 6], reviewed and approved -- the empty-enrolledBatches dialog scenario, the Date-vs-Decimal RSC-boundary question, and zero-history rendering were all traced through and confirmed correct, no fixes needed)
 
 **Files:**
 - Create: `src/components/attendance/mark-attendance-dialog.tsx`
@@ -1106,7 +1121,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 - Consumes: `markStudentAttendanceSchema`, `MarkStudentAttendanceInput` (`@/lib/validations/attendance`); `markStudentAttendance` (`@/actions/attendance`); `getStudentAttendanceHistory`, `getStudentEnrolledBatches` (`@/lib/queries/attendance`); `formatDateUTC` (`@/lib/dates`); `useGuardedDialogOpenChange` (`@/hooks/use-guarded-dialog`).
 - Produces: `MarkAttendanceDialog`, `StudentAttendanceTab` components.
 
-- [ ] **Step 1: Write `src/components/attendance/mark-attendance-dialog.tsx`**
+- [x] **Step 1: Write `src/components/attendance/mark-attendance-dialog.tsx`**
 
 ```tsx
 "use client";
@@ -1195,7 +1210,10 @@ export function MarkAttendanceDialog({
             <Label>Batch</Label>
             <Select
               value={watch("batchId")}
-              onValueChange={(v) => setValue("batchId", v)}
+              // base-ui types onValueChange's value as `string | null`, but no real
+              // call site emits null in single-select mode -- see batch-form-dialog.tsx
+              // for the fuller rationale.
+              onValueChange={(v) => setValue("batchId", v as string)}
               disabled={submitting || batches.length === 0}
             >
               <SelectTrigger>
@@ -1255,7 +1273,7 @@ export function MarkAttendanceDialog({
 }
 ```
 
-- [ ] **Step 2: Write `src/components/students/student-attendance-tab.tsx`**
+- [x] **Step 2: Write `src/components/students/student-attendance-tab.tsx`**
 
 ```tsx
 "use client";
@@ -1351,7 +1369,7 @@ export function StudentAttendanceTab({
 }
 ```
 
-- [ ] **Step 3: Modify `src/app/(app)/students/[id]/page.tsx`**
+- [x] **Step 3: Modify `src/app/(app)/students/[id]/page.tsx`**
 
 **Edit 1 — add three imports** after the existing `import { StudentFeesTab } from "@/components/students/student-fees-tab";` line:
 ```ts
@@ -1399,7 +1417,7 @@ No Decimal-serialization concern here (unlike the Fees tab) — attendance data 
 
 Leave everything else in the file untouched (the `ComingSoon` component itself, still used by Notes/Journey; the Overview, Fees, and Classes tab content).
 
-- [ ] **Step 4: Verify it compiles**
+- [x] **Step 4: Verify it compiles**
 
 ```bash
 npx tsc --noEmit
@@ -1407,18 +1425,18 @@ npx tsc --noEmit
 
 Expected: clean.
 
-- [ ] **Step 5: Verify manually**
+- [x] **Step 5: Verify manually**
 
 Same approach as Task 6 if browser access isn't available: a temporary script/test creating a temp student with a couple of `Attendance` rows, calling `getStudentAttendanceHistory`/`getStudentEnrolledBatches` and confirming the numbers match what a rendered tab would show (record count, rate, batch list for the dialog). If real browser access is available, click through the actual tab and take a screenshot instead. Clean up all test data afterward.
 
-- [ ] **Step 6: Run full regression**
+- [x] **Step 6: Run full regression**
 
 ```bash
 npx vitest run
 npx tsc --noEmit
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add -A
