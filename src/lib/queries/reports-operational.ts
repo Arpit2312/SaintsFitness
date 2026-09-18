@@ -18,15 +18,25 @@ export async function getOverdueStudents() {
 }
 
 export async function getAttendanceGaps(days: number) {
+  // A student is flagged when their last attended (PRESENT/LATE) day is
+  // strictly more than `days` days ago. ABSENT/LEAVE rows do not count as
+  // attending (matches src/lib/attendance/rate.ts). Students who joined on or
+  // after the cutoff cannot have a gap that long yet, so they are excluded
+  // (equivalent to measuring from lastAttended ?? joiningDate).
   const cutoff = new Date(todayInIST().getTime() - days * DAY_MS);
   const students = await prisma.student.findMany({
-    where: { deletedAt: null, status: "ACTIVE" },
+    where: { deletedAt: null, status: "ACTIVE", joiningDate: { lt: cutoff } },
     select: {
       id: true,
       studentCode: true,
       name: true,
       mobile: true,
-      attendance: { orderBy: { date: "desc" }, take: 1, select: { date: true } },
+      attendance: {
+        where: { status: { in: ["PRESENT", "LATE"] } },
+        orderBy: { date: "desc" },
+        take: 1,
+        select: { date: true },
+      },
     },
   });
 
@@ -41,11 +51,12 @@ export async function getAttendanceGaps(days: number) {
     .filter((s) => !s.lastAttendedAt || s.lastAttendedAt.getTime() < cutoff.getTime())
     .sort((a, b) => {
       // Students who never attended sort first (most urgent), then
-      // oldest-last-attended first.
-      if (!a.lastAttendedAt && !b.lastAttendedAt) return 0;
+      // oldest-last-attended first; ties broken by student code.
+      if (!a.lastAttendedAt && !b.lastAttendedAt) return a.studentCode.localeCompare(b.studentCode);
       if (!a.lastAttendedAt) return -1;
       if (!b.lastAttendedAt) return 1;
-      return a.lastAttendedAt.getTime() - b.lastAttendedAt.getTime();
+      const diff = a.lastAttendedAt.getTime() - b.lastAttendedAt.getTime();
+      return diff !== 0 ? diff : a.studentCode.localeCompare(b.studentCode);
     });
 }
 

@@ -1,4 +1,3 @@
-import { AlertCircle, ClipboardX, UserPlus, UserMinus } from "lucide-react";
 import {
   getOverdueStudents,
   getAttendanceGaps,
@@ -6,7 +5,6 @@ import {
 } from "@/lib/queries/reports-operational";
 import { ExportButton } from "@/components/reports/export-button";
 import { GapDaysSelect } from "@/components/reports/gap-days-select";
-import { EmptyState } from "@/components/shared/empty-state";
 import { formatDateUTC } from "@/lib/dates";
 import type { ResolvedRange } from "@/lib/reports/date-range";
 
@@ -16,6 +14,8 @@ export async function OperationalTab({ range, gapDays }: { range: ResolvedRange;
     getAttendanceGaps(gapDays),
     getRecentJoinsAndLeaves(range),
   ]);
+
+  const rangeLabel = `${formatDateUTC(range.from)} – ${formatDateUTC(range.to)}`;
 
   return (
     <div className="space-y-6">
@@ -28,18 +28,20 @@ export async function OperationalTab({ range, gapDays }: { range: ResolvedRange;
               name: s.name,
               mobile: s.mobile,
               totalPending: s.totalPending.toNumber(),
+              pastDuePending: s.pastDuePending.toNumber(),
             }))}
             columns={[
               { key: "studentCode", label: "Student Code" },
               { key: "name", label: "Name" },
               { key: "mobile", label: "Mobile" },
               { key: "totalPending", label: "Pending Amount" },
+              { key: "pastDuePending", label: "Past Due Amount" },
             ]}
             filename="overdue-students.csv"
           />
         </div>
         {overdue.length === 0 ? (
-          <EmptyState icon={AlertCircle} title="No students are overdue." />
+          <p className="py-6 text-center text-sm text-muted">No students are overdue.</p>
         ) : (
           <div className="divide-y divide-card-border">
             {overdue.map((s) => (
@@ -48,9 +50,14 @@ export async function OperationalTab({ range, gapDays }: { range: ResolvedRange;
                   <p className="font-medium text-foreground">{s.name}</p>
                   <p className="text-sm text-muted">{s.studentCode}</p>
                 </div>
-                <p className="text-sm font-medium text-danger">
-                  ₹{s.totalPending.toNumber().toLocaleString("en-IN")}
-                </p>
+                <div className="text-right">
+                  <p className="text-sm font-medium text-danger">
+                    ₹{s.pastDuePending.toNumber().toLocaleString("en-IN")} past due
+                  </p>
+                  <p className="text-xs text-muted">
+                    ₹{s.totalPending.toNumber().toLocaleString("en-IN")} total pending
+                  </p>
+                </div>
               </div>
             ))}
           </div>
@@ -80,7 +87,9 @@ export async function OperationalTab({ range, gapDays }: { range: ResolvedRange;
           </div>
         </div>
         {gaps.length === 0 ? (
-          <EmptyState icon={ClipboardX} title={`No active students have a ${gapDays}+ day attendance gap.`} />
+          <p className="py-6 text-center text-sm text-muted">
+            {`No active students have gone more than ${gapDays} days without attending.`}
+          </p>
         ) : (
           <div className="divide-y divide-card-border">
             {gaps.map((s) => (
@@ -100,8 +109,11 @@ export async function OperationalTab({ range, gapDays }: { range: ResolvedRange;
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="glass-card space-y-3 p-5">
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-foreground">Recently Joined</h2>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="font-semibold text-foreground">Recently Joined</h2>
+              <p className="text-xs text-muted">{rangeLabel}</p>
+            </div>
             <ExportButton
               rows={joinsAndLeaves.joined.map((s) => ({
                 studentCode: s.studentCode,
@@ -119,7 +131,7 @@ export async function OperationalTab({ range, gapDays }: { range: ResolvedRange;
             />
           </div>
           {joinsAndLeaves.joined.length === 0 ? (
-            <EmptyState icon={UserPlus} title="No new students joined in this range." />
+            <p className="py-6 text-center text-sm text-muted">No new students joined in this range.</p>
           ) : (
             <div className="divide-y divide-card-border">
               {joinsAndLeaves.joined.map((s) => (
@@ -133,8 +145,11 @@ export async function OperationalTab({ range, gapDays }: { range: ResolvedRange;
         </div>
 
         <div className="glass-card space-y-3 p-5">
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-foreground">Recently Left</h2>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="font-semibold text-foreground">Recently Left</h2>
+              <p className="text-xs text-muted">{rangeLabel}</p>
+            </div>
             <ExportButton
               rows={joinsAndLeaves.left.map((s) => ({
                 studentCode: s.studentCode,
@@ -152,7 +167,7 @@ export async function OperationalTab({ range, gapDays }: { range: ResolvedRange;
             />
           </div>
           {joinsAndLeaves.left.length === 0 ? (
-            <EmptyState icon={UserMinus} title="No students left in this range." />
+            <p className="py-6 text-center text-sm text-muted">No students left in this range.</p>
           ) : (
             <div className="divide-y divide-card-border">
               {joinsAndLeaves.left.map((s) => (
