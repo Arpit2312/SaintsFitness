@@ -27,9 +27,9 @@ export async function OverviewTab({ range }: { range: ResolvedRange }) {
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard icon={Wallet} label="Total Pending" value={`₹${dues.totalPending.toLocaleString("en-IN")}`} note="As of today" />
-        <StatCard icon={AlertCircle} label="Overdue" value={String(dues.overdueCount)} note="As of today" />
-        <StatCard icon={Clock} label="Partial" value={String(dues.partialCount)} note="As of today" />
-        <StatCard icon={BellRing} label="Due" value={String(dues.dueCount)} note="As of today" />
+        <StatCard icon={AlertCircle} label="Overdue" value={String(dues.overdueCount)} note="Any past-due balance" />
+        <StatCard icon={Clock} label="Partial" value={String(dues.partialCount)} note="Current period partly paid" />
+        <StatCard icon={BellRing} label="Due" value={String(dues.dueCount)} note="Current period unpaid, not yet due" />
       </div>
 
       <div className="glass-card space-y-3 p-5">
@@ -79,6 +79,9 @@ export async function OverviewTab({ range }: { range: ResolvedRange }) {
           {totalSent === 0
             ? "No reminders sent in this range"
             : `${totalSent} sent, ${totalConverted} converted${conversionRate !== null ? ` (${conversionRate}% conversion rate)` : ""}`}
+        </p>
+        <p className="text-xs text-muted">
+          Converted = the student recorded a payment after the reminder and before their next one. Dues tiles above are as of today, not the selected range.
         </p>
       </div>
     </div>
