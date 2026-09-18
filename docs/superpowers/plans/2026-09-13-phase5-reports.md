@@ -1574,6 +1574,23 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
+## Execution Notes: post-review changes (supersede the code blocks above where they differ)
+
+Tasks 1-11 were implemented in parallel (dependency-chained, one shared worktree), committed one task per commit, and each cluster was independently reviewed. Review found the following real issues, most of them baked into this plan's own prescribed code; the shipped code differs from the blocks above in these places:
+
+1. **Overdue classification (Tasks 7/8).** The plan reused `listStudentFeeStatuses`' per-student `status`, which is the status of only the LATEST period. A recurring plan's latest period always contains today and is due at month-end, so it can never read OVERDUE (only CUSTOM plans can): the Overdue Students list and Overdue tile would have been near-empty even for students months behind. Fixed with `src/lib/reports/dues.ts` (`classifyDues`, pure, unit-tested) and `src/lib/queries/reports-dues.ts` (`listPendingStudentsWithDues`): a pending student is OVERDUE if ANY period is past its due date with an unpaid balance (including partly-paid past-due periods), else PARTIAL if the latest period is partial, else DUE. `getOutstandingDuesSummary` and `getOverdueStudents` are built from it; the overdue list is sorted by past-due amount. NOTE: the Fees and Fee Reminders pages still show the latest-period status badge (Phase 2/4 behaviour, deliberately not changed here), so an admin can see "Due" on those pages for a student the Reports call "Overdue".
+2. **Custom range hardening (Task 2).** `resolveDateRange` now requires strict `YYYY-MM-DD`, rejects impossible dates, years outside 2000-2100, and spans over 5 years (falls back to This Month). Added `RANGE_PRESETS` / `normalizeRangeParam`. The plan's version let `?from=0001-01-01&to=9999-12-31` generate ~97k buckets (~26 s) or an Invalid Date.
+3. **DateRangePicker (Task 4).** The plan's picker wrote no dates when "Custom Range" was chosen and only one of from/to on edit, so custom ranges could not be entered. It now always writes a complete pair.
+4. **Picker placement (Tasks 9/10/11).** The picker renders once in `reports/page.tsx` above the tab content, so it is available on BOTH tabs (Recently Joined/Left depend on the range). `OverviewTab` now takes `{ range }` only. `page.tsx` normalizes every search param (arrays, unknown presets, tab, gapDays).
+5. **Attendance rate (Task 7).** `getAttendanceRateOverTime` returns `rate: number | null` (null when a bucket has no marked records) so non-class days are gaps, not 0%. The chart sets `connectNulls={false}`.
+6. **Reminder conversion (Task 7).** Date-only (UTC-midnight) payment dates count for the whole day; reminder/payment fetches are narrowed to what the conversion window needs.
+7. **Attendance gaps (Task 8).** "Last attended" means PRESENT/LATE (ABSENT/LEAVE rows no longer hide a drop-off), students who joined within the window are excluded, and ties sort by student code.
+8. **CSV (Tasks 1/6).** Bare `\r` is quoted; string cells starting with `=`, `+`, `-`, `@`, tab or CR are prefixed with `'` (spreadsheet formula injection); `ExportButton` prepends a UTF-8 BOM (Excel) and revokes the object URL after a delay.
+9. **Charts (Task 5).** Recharts 3.x types the Tooltip formatter value as `ValueType | undefined`, so formatters coerce with `Number(value ?? 0)`; single-point series show a dot; the tooltip uses the solid `--popover` token.
+10. **Operational tab (Task 10).** In-card empty states are plain text (no card-in-card), the Overdue list shows the past-due amount (matching its sort) plus total pending, with a "Past Due Amount" CSV column, and the Joined/Left cards show the active range.
+11. **Test label.** `formatDateUTC` renders September as "Sept" under this Node/ICU (en-GB), so the day-bucket label test accepts `Sep` or `Sept`.
+12. **Baseline.** Final unit-test count is 177 (116 from earlier phases + 61 new: csv 18, date-range 28, reminder-conversion 6, dues 9).
+
 ## Post-Plan Check
 
 At the end of this plan: the admin has one place (`/reports`) to see revenue, dues, attendance, and reminder trends over any time range, plus three actionable operational lists, with CSV export on every table. SAINTS Journey (Phase 6) and Settings/notifications (Phase 7) are unrelated to this phase's scope.
