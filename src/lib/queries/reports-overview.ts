@@ -9,6 +9,7 @@ import { generateBuckets, type ResolvedRange } from "@/lib/reports/date-range";
 import { computeReminderConversions } from "@/lib/reports/reminder-conversion";
 import { listPendingStudentsWithDues } from "@/lib/queries/reports-dues";
 import { computeAttendanceRate } from "@/lib/attendance/rate";
+import { startOfUTCDay, endOfUTCDay } from "@/lib/dates";
 
 export async function getRevenueOverTime(range: ResolvedRange) {
   const payments = await prisma.payment.findMany({
@@ -51,7 +52,9 @@ export async function getAttendanceRateOverTime(range: ResolvedRange) {
     const inBucket = records.filter(
       (r) => r.date.getTime() >= b.start.getTime() && r.date.getTime() <= b.end.getTime()
     );
-    return { label: b.label, rate: computeAttendanceRate(inBucket) };
+    // null (not 0) for buckets with no marked records, so the chart shows a
+    // gap instead of a misleading 0% on non-class days.
+    return { label: b.label, rate: inBucket.length === 0 ? null : computeAttendanceRate(inBucket) };
   });
 }
 
@@ -67,21 +70,36 @@ export async function getReminderActivity(range: ResolvedRange) {
   }
 
   // Conversion for a reminder can depend on its next reminder or on a
-  // payment outside the selected range, so this fetches ALL of the
-  // relevant students' reminders/payments (not just those inside [from,
-  // to]) rather than restricting the conversion computation to the range.
+  // payment outside the selected range, so this fetches the relevant
+  // students' reminders/payments beyond [from, to] rather than restricting
+  // the conversion computation to the range. Only the lower bounds can be
+  // narrowed: every in-range reminder's "next reminder" is at or after
+  // `from`, and only payments from the earliest in-range reminder's day on
+  // can convert anything.
   const studentIds = [...new Set(remindersInRange.map((r) => r.studentId))];
+  const earliestSentAt = new Date(Math.min(...remindersInRange.map((r) => r.sentAt.getTime())));
   const [allReminders, allPayments] = await Promise.all([
     prisma.feeReminder.findMany({
-      where: { studentId: { in: studentIds } },
+      where: { studentId: { in: studentIds }, sentAt: { gte: range.from } },
       select: { id: true, studentId: true, sentAt: true },
     }),
     prisma.payment.findMany({
-      where: { studentId: { in: studentIds } },
+      where: { studentId: { in: studentIds }, paymentDate: { gte: startOfUTCDay(earliestSentAt) } },
       select: { studentId: true, paymentDate: true },
     }),
   ]);
-  const conversions = computeReminderConversions(allReminders, allPayments, new Date());
+  // Payment.paymentDate is usually a date-only (UTC-midnight) value from the
+  // date picker while sentAt is a real timestamp; treat a date-only payment
+  // as happening at the end of its day so a same-day payment counts as after
+  // a reminder sent earlier that day.
+  const adjustedPayments = allPayments.map((p) => ({
+    studentId: p.studentId,
+    paymentDate:
+      p.paymentDate.getTime() === startOfUTCDay(p.paymentDate).getTime()
+        ? endOfUTCDay(p.paymentDate)
+        : p.paymentDate,
+  }));
+  const conversions = computeReminderConversions(allReminders, adjustedPayments, new Date());
 
   return buckets.map((b) => {
     const inBucket = remindersInRange.filter(

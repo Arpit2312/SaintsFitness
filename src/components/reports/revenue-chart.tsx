@@ -15,8 +15,12 @@ export function RevenueChart({ data }: { data: RevenuePoint[] }) {
             tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
             tickFormatter={(value: number) => `₹${value.toLocaleString("en-IN")}`}
           />
-          <Tooltip formatter={(value) => [`₹${Number(value).toLocaleString("en-IN")}`, "Revenue"]} />
-          <Line type="monotone" dataKey="total" stroke="var(--gold)" strokeWidth={2} dot={false} />
+          <Tooltip
+            contentStyle={{ backgroundColor: "var(--popover)", border: "1px solid var(--card-border)", borderRadius: 8 }}
+            labelStyle={{ color: "var(--muted-foreground)" }}
+            formatter={(value) => [`₹${Number(value ?? 0).toLocaleString("en-IN")}`, "Revenue"]}
+          />
+          <Line type="monotone" dataKey="total" stroke="var(--gold)" strokeWidth={2} dot={data.length < 2} />
         </LineChart>
       </ResponsiveContainer>
     </div>

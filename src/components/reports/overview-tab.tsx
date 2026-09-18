@@ -5,14 +5,13 @@ import {
   getAttendanceRateOverTime,
   getReminderActivity,
 } from "@/lib/queries/reports-overview";
-import { DateRangePicker } from "@/components/reports/date-range-picker";
 import { RevenueChart } from "@/components/reports/revenue-chart";
 import { AttendanceTrendChart } from "@/components/reports/attendance-trend-chart";
 import { ExportButton } from "@/components/reports/export-button";
 import { StatCard } from "@/components/dashboard/stat-card";
 import type { ResolvedRange } from "@/lib/reports/date-range";
 
-export async function OverviewTab({ range, rangeParam }: { range: ResolvedRange; rangeParam: string }) {
+export async function OverviewTab({ range }: { range: ResolvedRange }) {
   const [revenue, dues, attendanceTrend, reminderActivity] = await Promise.all([
     getRevenueOverTime(range),
     getOutstandingDuesSummary(),
@@ -26,13 +25,11 @@ export async function OverviewTab({ range, rangeParam }: { range: ResolvedRange;
 
   return (
     <div className="space-y-6">
-      <DateRangePicker range={rangeParam} from={range.from} to={range.to} />
-
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard icon={Wallet} label="Total Pending" value={`₹${dues.totalPending.toLocaleString("en-IN")}`} />
-        <StatCard icon={AlertCircle} label="Overdue" value={String(dues.overdueCount)} />
-        <StatCard icon={Clock} label="Partial" value={String(dues.partialCount)} />
-        <StatCard icon={BellRing} label="Due" value={String(dues.dueCount)} />
+        <StatCard icon={Wallet} label="Total Pending" value={`₹${dues.totalPending.toLocaleString("en-IN")}`} note="As of today" />
+        <StatCard icon={AlertCircle} label="Overdue" value={String(dues.overdueCount)} note="As of today" />
+        <StatCard icon={Clock} label="Partial" value={String(dues.partialCount)} note="As of today" />
+        <StatCard icon={BellRing} label="Due" value={String(dues.dueCount)} note="As of today" />
       </div>
 
       <div className="glass-card space-y-3 p-5">
@@ -79,8 +76,9 @@ export async function OverviewTab({ range, rangeParam }: { range: ResolvedRange;
           />
         </div>
         <p className="text-sm text-muted">
-          {totalSent} sent, {totalConverted} converted
-          {conversionRate !== null && ` (${conversionRate}% conversion rate)`}
+          {totalSent === 0
+            ? "No reminders sent in this range"
+            : `${totalSent} sent, ${totalConverted} converted${conversionRate !== null ? ` (${conversionRate}% conversion rate)` : ""}`}
         </p>
       </div>
     </div>
