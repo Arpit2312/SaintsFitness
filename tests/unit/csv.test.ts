@@ -41,4 +41,63 @@ describe("toCsv", () => {
     const csv = toCsv([{ name: undefined }], [{ key: "name", label: "Name" }]);
     expect(csv).toBe("Name\r\n");
   });
+
+  it("quotes a header label containing a comma", () => {
+    const csv = toCsv([{ amount: 1 }], [{ key: "amount", label: "Amount, INR" }]);
+    expect(csv).toBe('"Amount, INR"\r\n1');
+  });
+
+  it("doubles a quote inside a header label", () => {
+    const csv = toCsv([{ note: "x" }], [{ key: "note", label: 'The "Note"' }]);
+    expect(csv).toBe('"The ""Note"""\r\nx');
+  });
+
+  it("renders the number 0 as 0", () => {
+    const csv = toCsv([{ amount: 0 }], [{ key: "amount", label: "Amount" }]);
+    expect(csv).toBe("Amount\r\n0");
+  });
+
+  it("leaves a negative number unprefixed", () => {
+    const csv = toCsv([{ amount: -5 }], [{ key: "amount", label: "Amount" }]);
+    expect(csv).toBe("Amount\r\n-5");
+  });
+
+  it("prefixes a string cell starting with = to neutralise formulas", () => {
+    const csv = toCsv([{ note: "=SUM(A1)" }], [{ key: "note", label: "Note" }]);
+    expect(csv).toBe("Note\r\n'=SUM(A1)");
+  });
+
+  it.each(["+1", "-1", "@cmd"])(
+    "prefixes a string cell starting with %s",
+    (value) => {
+      const csv = toCsv([{ note: value }], [{ key: "note", label: "Note" }]);
+      expect(csv).toBe(`Note\r\n'${value}`);
+    }
+  );
+
+  it("prefixes first, then quotes, a formula string containing a comma", () => {
+    const csv = toCsv([{ note: "=a,b" }], [{ key: "note", label: "Note" }]);
+    expect(csv).toBe('Note\r\n"\'=a,b"');
+  });
+
+  it("leaves a normal string untouched", () => {
+    const csv = toCsv([{ name: "Asha" }], [{ key: "name", label: "Name" }]);
+    expect(csv).toBe("Name\r\nAsha");
+  });
+
+  it("quotes a field containing a lone carriage return", () => {
+    const csv = toCsv([{ note: "a\rb" }], [{ key: "note", label: "Note" }]);
+    expect(csv).toBe('Note\r\n"a\rb"');
+  });
+
+  it("renders a multi-column row mixing a quoted and a plain field", () => {
+    const csv = toCsv(
+      [{ name: "Doe, John", amount: 500 }],
+      [
+        { key: "name", label: "Name" },
+        { key: "amount", label: "Amount" },
+      ]
+    );
+    expect(csv).toBe('Name,Amount\r\n"Doe, John",500');
+  });
 });

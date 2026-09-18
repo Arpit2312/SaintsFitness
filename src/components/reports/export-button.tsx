@@ -15,13 +15,14 @@ export function ExportButton<T extends Record<string, CsvValue>>({
 }) {
   function handleExport() {
     const csv = toCsv(rows, columns);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    // UTF-8 BOM so Excel on Windows decodes non-ASCII names correctly.
+    const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
     link.download = filename;
     link.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   return (
