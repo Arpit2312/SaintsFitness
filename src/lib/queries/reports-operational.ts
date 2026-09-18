@@ -5,14 +5,16 @@ import "server-only";
 
 import { prisma } from "@/lib/db";
 import { todayInIST } from "@/lib/dates";
-import { listStudentsWithPendingFees } from "@/lib/queries/reminders";
+import { listPendingStudentsWithDues } from "@/lib/queries/reports-dues";
 import type { ResolvedRange } from "@/lib/reports/date-range";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export async function getOverdueStudents() {
-  const pending = await listStudentsWithPendingFees();
-  return pending.filter((s) => s.status === "OVERDUE");
+  const pending = await listPendingStudentsWithDues();
+  return pending
+    .filter((s) => s.category === "OVERDUE")
+    .sort((a, b) => b.pastDuePending.comparedTo(a.pastDuePending));
 }
 
 export async function getAttendanceGaps(days: number) {

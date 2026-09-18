@@ -7,7 +7,7 @@ import { Decimal } from "@prisma/client/runtime/library";
 import { prisma } from "@/lib/db";
 import { generateBuckets, type ResolvedRange } from "@/lib/reports/date-range";
 import { computeReminderConversions } from "@/lib/reports/reminder-conversion";
-import { listStudentFeeStatuses } from "@/lib/queries/fees";
+import { listPendingStudentsWithDues } from "@/lib/queries/reports-dues";
 import { computeAttendanceRate } from "@/lib/attendance/rate";
 
 export async function getRevenueOverTime(range: ResolvedRange) {
@@ -25,10 +25,7 @@ export async function getRevenueOverTime(range: ResolvedRange) {
 }
 
 export async function getOutstandingDuesSummary() {
-  const statuses = await listStudentFeeStatuses();
-  const pending = statuses.filter(
-    (s): s is Extract<(typeof statuses)[number], { hasPlan: true }> => s.hasPlan && s.totalPending.gt(0)
-  );
+  const pending = await listPendingStudentsWithDues();
 
   let totalPending = new Decimal(0);
   let overdueCount = 0;
@@ -36,9 +33,9 @@ export async function getOutstandingDuesSummary() {
   let dueCount = 0;
   for (const s of pending) {
     totalPending = totalPending.plus(s.totalPending);
-    if (s.status === "OVERDUE") overdueCount += 1;
-    else if (s.status === "PARTIAL") partialCount += 1;
-    else if (s.status === "DUE") dueCount += 1;
+    if (s.category === "OVERDUE") overdueCount += 1;
+    else if (s.category === "PARTIAL") partialCount += 1;
+    else dueCount += 1;
   }
 
   return { totalPending: totalPending.toNumber(), overdueCount, partialCount, dueCount };
