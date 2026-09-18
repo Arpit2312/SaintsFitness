@@ -33,7 +33,11 @@ export function DateRangePicker({ range, from, to }: { range: string; from: Date
     <div className="flex flex-wrap items-center gap-3">
       <Select
         value={range}
-        onValueChange={(v) => updateParams({ range: v as string, from: undefined, to: undefined })}
+        onValueChange={(v) =>
+          v === "custom"
+            ? updateParams({ range: "custom", from: toDateInputValue(from), to: toDateInputValue(to) })
+            : updateParams({ range: v as string, from: undefined, to: undefined })
+        }
       >
         <SelectTrigger className="w-48">
           <SelectValue placeholder="Select a range">
@@ -55,7 +59,10 @@ export function DateRangePicker({ range, from, to }: { range: string; from: Date
             type="date"
             value={toDateInputValue(from)}
             max={toDateInputValue(to)}
-            onChange={(e) => updateParams({ range: "custom", from: e.target.value })}
+            onChange={(e) => {
+              if (!e.target.value) return;
+              updateParams({ range: "custom", from: e.target.value, to: toDateInputValue(to) });
+            }}
             className="w-40"
           />
           <span className="text-sm text-muted">to</span>
@@ -63,7 +70,10 @@ export function DateRangePicker({ range, from, to }: { range: string; from: Date
             type="date"
             value={toDateInputValue(to)}
             min={toDateInputValue(from)}
-            onChange={(e) => updateParams({ range: "custom", to: e.target.value })}
+            onChange={(e) => {
+              if (!e.target.value) return;
+              updateParams({ range: "custom", from: toDateInputValue(from), to: e.target.value });
+            }}
             className="w-40"
           />
         </>

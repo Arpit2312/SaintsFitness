@@ -20,11 +20,37 @@ export type Bucket = { start: Date; end: Date; label: string };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+const DATE_PARAM_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MIN_CUSTOM_YEAR = 2000;
+const MAX_CUSTOM_YEAR = 2100;
+const MAX_CUSTOM_RANGE_DAYS = 366 * 5;
+
+export const RANGE_PRESETS = ["this-month", "last-3-months", "this-year", "custom"] as const;
+
+/** Normalizes a raw searchParams `range` value to a known preset (default this-month). */
+export function normalizeRangeParam(value: string | string[] | undefined): (typeof RANGE_PRESETS)[number] {
+  const first = Array.isArray(value) ? value[0] : value;
+  return (RANGE_PRESETS as readonly string[]).includes(first ?? "")
+    ? (first as (typeof RANGE_PRESETS)[number])
+    : "this-month";
+}
+
+/**
+ * Strictly parses a `YYYY-MM-DD` string as a UTC midnight date. Rejects any
+ * other shape and impossible calendar dates (e.g. 2026-02-31, which JS would
+ * otherwise roll over into March).
+ */
 function parseDateParam(value: string | undefined): Date | null {
-  if (!value) return null;
-  const parsed = new Date(value);
+  if (!value || !DATE_PARAM_RE.test(value)) return null;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
   if (Number.isNaN(parsed.getTime())) return null;
+  if (parsed.toISOString().slice(0, 10) !== value) return null;
   return parsed;
+}
+
+function yearInBounds(date: Date): boolean {
+  const year = date.getUTCFullYear();
+  return year >= MIN_CUSTOM_YEAR && year <= MAX_CUSTOM_YEAR;
 }
 
 function bucketSizeFor(from: Date, to: Date): BucketSize {
@@ -37,9 +63,10 @@ function bucketSizeFor(from: Date, to: Date): BucketSize {
 /**
  * Resolves the searchParams-encoded range into concrete UTC boundaries plus
  * the bucket size every chart/query should use for this range. An invalid
- * or backwards custom range (unparseable from/to, or from after to) falls
- * back to the default preset rather than throwing -- a hand-edited or
- * stale URL shouldn't crash the page.
+ * or unreasonable custom range (non-YYYY-MM-DD or impossible dates, from after
+ * to, years outside 2000-2100, or a span over 5 years) falls back to the
+ * default preset rather than throwing or generating huge bucket lists -- a
+ * hand-edited or stale URL shouldn't crash the page.
  */
 export function resolveDateRange(params: RangeParams): ResolvedRange {
   const today = todayInIST();
@@ -47,7 +74,14 @@ export function resolveDateRange(params: RangeParams): ResolvedRange {
   if (params.range === "custom") {
     const from = parseDateParam(params.from);
     const to = parseDateParam(params.to);
-    if (from && to && from.getTime() <= to.getTime()) {
+    if (
+      from &&
+      to &&
+      from.getTime() <= to.getTime() &&
+      yearInBounds(from) &&
+      yearInBounds(to) &&
+      (to.getTime() - from.getTime()) / DAY_MS + 1 <= MAX_CUSTOM_RANGE_DAYS
+    ) {
       const resolvedFrom = startOfUTCDay(from);
       const resolvedTo = endOfUTCDay(to);
       return { from: resolvedFrom, to: resolvedTo, bucketSize: bucketSizeFor(resolvedFrom, resolvedTo) };
@@ -73,7 +107,9 @@ export function resolveDateRange(params: RangeParams): ResolvedRange {
  * `bucketSize`. Month buckets align to calendar months (the first bucket
  * starts at startOfMonth(from), even if `from` isn't the 1st); day/week
  * buckets align to `from` itself rather than the calendar week, which is
- * simpler and fully deterministic. The final bucket is clipped to `to`.
+ * simpler and fully deterministic. The final day/week bucket is clipped to
+ * `to`; the final month bucket ends at endOfMonth and can overrun `to`
+ * (harmless: consumers filter rows by [from, to] before bucketing).
  */
 export function generateBuckets(from: Date, to: Date, bucketSize: BucketSize): Bucket[] {
   const buckets: Bucket[] = [];
