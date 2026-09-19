@@ -53,7 +53,7 @@ export function JourneyOverview({ students }: { students: JourneyOverviewStudent
               <Link
                 key={student.studentId}
                 href={`/students/${student.studentId}?tab=journey`}
-                className="glass-card block min-w-0 space-y-4 p-5 transition-colors hover:border-gold"
+                className="glass-card block min-w-0 space-y-4 p-5 transition-colors outline-none hover:border-gold focus-visible:ring-2 focus-visible:ring-ring/50"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
