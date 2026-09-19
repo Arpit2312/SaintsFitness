@@ -1845,6 +1845,19 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
+## Execution Notes: post-review changes (supersede the code blocks above where they differ)
+
+Task 1 was run first by the orchestrator (migration applied to the shared database, which is additive); Tasks 2-11 were implemented in parallel by dependency-chained agents, committed one task per commit, and independently reviewed in four clusters plus a whole-branch review. The implementations matched the plan verbatim; review found these plan-level defects, fixed in a follow-up commit, so the shipped code differs from the blocks above as follows:
+
+1. **Task 9 (`note-form-dialog.tsx`)**: the instructor `Select` used `value={instructorId === "" ? undefined : instructorId}`, which starts uncontrolled and flips to controlled on the first pick (base-ui logs a dev error). It is now always controlled: `value={instructorId}`. The textarea is capped (`max-h-48 overflow-y-auto`) so a ~1000-character note cannot push Save off a short screen, and the counter turns red over the limit.
+2. **Task 8 (`student-journey-tab.tsx`)**: `hasAnyReflection` counted Discipline, which is derived from attendance, so the "Begin this journey" prompt was effectively dead for anyone who had attended a class. It now ignores `discipline`. A caption under the visual explains that Discipline reflects the last 90 days of attendance.
+3. **Task 4 (`journey-path.tsx`)**: values are clamped to 0-100 (out-of-range legacy values drew a wrong arc), the gold arc is skipped at 0% (round caps can draw a dot), rings are `aria-hidden` when their label text is visible (avoids announcing every quality twice), and labels are `text-[10px] sm:text-sm` because five labels share ~50px columns on a phone.
+4. **Task 7 (`progress-form-dialog.tsx`)**: an unrecognised stored dance level (the column was free-form before this phase) seeds the form as unrated so the first save cannot fail zod; the description notes that Movement combines dance level and fitness.
+5. **Tasks 8/9/10**: long unbroken text wraps (`break-words`, `min-w-0`) in the notes list, journey tab and overview cards; the overview snippet truncates by code point (`Array.from`) so an emoji is never split; Title Case for new buttons/headings/labels ("Update Progress", "Save Progress", "Add Note", "Save Note", "Dance Level", "Recent Reflections") to match the rest of the app.
+6. **Task 11**: `src/components/shared/phase-stub.tsx` was deleted (the Journey stub was its last user).
+7. **Tests**: `toJourneyItems` now pins every value; added cases for dance-level case sensitivity, an empty progress object, whitespace-only and negative scores, trim-before-max for notes, and a missing student. Final test count is 224 (177 earlier + 23 in `journey-qualities` + 24 in `journey-validation`).
+8. **Known and accepted**: notes show as UTC calendar dates (as Reminders does); the 90-day window is 91 calendar days inclusive; `listJourneyOverview` does three bulk queries (the spec said two: the extra one is the 90-day attendance the Discipline ring needs) and loads all notes/attendance for active students, which is fine at academy scale.
+
 ## Post-Plan Check
 
 At the end of this plan: each student has a reflective journey view and instructor notes, and the admin has an academy-wide overview at `/journey`. The overview's Discipline ring needs each student's 90-day attendance, so `listJourneyOverview` does one extra bulk attendance query beyond the spec's "two bulk queries" (still no N+1). Phase 7 (Settings and notifications) is unrelated to this phase's scope.
