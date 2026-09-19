@@ -276,6 +276,8 @@ model JourneyProgress {
   danceLevel       String?
   fitnessScore     Int?
   consistencyScore Int?
+  awarenessScore   Int?
+  growthScore      Int?
   updatedAt        DateTime @updatedAt
 }
 
