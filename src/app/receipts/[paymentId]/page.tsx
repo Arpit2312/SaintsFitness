@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { format } from "date-fns";
 import { auth } from "@/lib/auth";
 import { getPayment } from "@/lib/queries/fees";
+import { getSettings } from "@/lib/queries/settings";
 import { formatMonthYear } from "@/lib/fees/periods";
 import { ReceiptActions } from "@/components/fees/receipt-actions";
 import type { PaymentMode } from "@prisma/client";
@@ -26,27 +27,41 @@ export default async function ReceiptPage({
   const payment = await getPayment(paymentId);
   if (!payment || !payment.receipt) notFound();
 
+  const settings = await getSettings();
+  const contactLines = [settings.address, settings.mobile, settings.email].filter(
+    (line): line is string => !!line
+  );
+
   const startLabel = formatMonthYear(payment.coverageStart);
   const endLabel = formatMonthYear(payment.coverageEnd);
   const periodLabel = startLabel === endLabel ? startLabel : `${startLabel} – ${endLabel}`;
   const amountLabel = payment.amount.toNumber().toLocaleString("en-IN");
 
   const shareMessage = [
-    "SAINTS – Fee Receipt",
+    `${settings.academyName} – Fee Receipt`,
     `Receipt No: ${payment.receipt.receiptNumber}`,
     `Student: ${payment.student.name}`,
     `Amount: ₹${amountLabel}`,
     `For: ${periodLabel}`,
     `Paid via ${MODE_LABELS[payment.mode]} on ${format(payment.paymentDate, "dd MMM yyyy")}`,
-    "Thank you!",
+    ...(settings.receiptFooter ? [settings.receiptFooter] : []),
   ].join("\n");
 
   return (
     <main className="flex min-h-screen items-center justify-center p-4">
       <div className="glass-card w-full max-w-md space-y-6 p-8 print:border-none print:bg-white print:text-black">
         <div className="text-center">
-          <p className="text-lg font-semibold text-gold print:text-black">SAINTS</p>
+          {settings.logoUrl && (
+            // eslint-disable-next-line @next/next/no-img-element -- admin-configured external logo; next/image would need every host allow-listed
+            <img src={settings.logoUrl} alt="" className="mx-auto mb-2 h-12 w-12 object-contain" />
+          )}
+          <p className="text-lg font-semibold text-gold print:text-black">{settings.academyName}</p>
           <p className="text-sm text-muted print:text-black">Dance • Zumba • Movement • Self Knowledge</p>
+          {contactLines.map((line) => (
+            <p key={line} className="text-xs text-muted print:text-black">
+              {line}
+            </p>
+          ))}
           <div className="gold-divider my-3" />
           <p className="font-medium text-foreground print:text-black">FEE RECEIPT</p>
         </div>
@@ -78,7 +93,9 @@ export default async function ReceiptPage({
           </div>
         </div>
 
-        <p className="text-center text-sm text-muted print:text-black">Thank You</p>
+        {settings.receiptFooter && (
+          <p className="text-center text-sm text-muted print:text-black">{settings.receiptFooter}</p>
+        )}
 
         <ReceiptActions studentMobile={payment.student.mobile} shareMessage={shareMessage} />
       </div>
