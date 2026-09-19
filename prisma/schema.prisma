@@ -288,7 +288,28 @@ model Notification {
   type      String
   message   String
   read      Boolean  @default(false)
+  dedupeKey String?  @unique
   createdAt DateTime @default(now())
+
+  @@index([read, createdAt])
+}
+
+model AcademySettings {
+  id                     String    @id @default("default")
+  academyName            String    @default("SAINTS")
+  logoUrl                String?
+  address                String?
+  mobile                 String?
+  email                  String?
+  receiptPrefix          String    @default("SNT")
+  receiptIncludeYear     Boolean   @default(true)
+  receiptFooter          String    @default("Thank You")
+  /// null => use DEFAULT_REMINDER_TEMPLATE from src/lib/settings/defaults.ts
+  reminderTemplate       String?
+  dueSoonDays            Int       @default(3)
+  overdueReminderDays    Int       @default(7)
+  lastNotificationSyncAt DateTime?
+  updatedAt              DateTime  @updatedAt
 }
 
 model FeeReminder {
