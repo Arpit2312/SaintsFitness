@@ -7,6 +7,7 @@ import { paymentSchema, type PaymentInput } from "@/lib/validations/payment";
 import { getCoverageStartForNewPayment, resolveActualPeriodsCovered } from "@/lib/fees/fee-history";
 import { computeCoverageRange } from "@/lib/fees/periods";
 import { Decimal } from "@prisma/client/runtime/library";
+import { notifyPaymentReceived } from "@/lib/notifications/create";
 import { revalidatePath } from "next/cache";
 
 export async function saveFeePlan(studentId: string, input: FeePlanInput) {
@@ -51,7 +52,7 @@ export async function createPayment(studentId: string, input: PaymentInput) {
 
   const student = await prisma.student.findUnique({
     where: { id: studentId, deletedAt: null },
-    select: { id: true },
+    select: { id: true, name: true },
   });
   if (!student) {
     throw new Error("Student not found.");
@@ -107,6 +108,14 @@ export async function createPayment(studentId: string, input: PaymentInput) {
       receipt: { create: { receiptNumber } },
     },
     include: { receipt: true },
+  });
+
+  await notifyPaymentReceived({
+    paymentId: payment.id,
+    studentId,
+    studentName: student.name,
+    amount: payment.amount.toNumber(),
+    mode: payment.mode,
   });
 
   revalidatePath(`/students/${studentId}`);

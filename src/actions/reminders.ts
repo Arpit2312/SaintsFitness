@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/db";
 import { computeFeeHistory } from "@/lib/fees/fee-history";
 import { buildReminderMessage } from "@/lib/reminders/message";
+import { getSettings } from "@/lib/queries/settings";
 import { revalidatePath } from "next/cache";
 
 // No zod schema here -- unlike Phases 2/3's mutations, this action takes a
@@ -33,7 +34,11 @@ export async function sendFeeReminder(studentId: string) {
   }
 
   const pendingAmount = totalPending.toNumber();
-  const message = buildReminderMessage(student.name, pendingAmount);
+  const settings = await getSettings();
+  const message = buildReminderMessage(student.name, pendingAmount, {
+    template: settings.reminderTemplate,
+    academyName: settings.academyName,
+  });
 
   const reminder = await prisma.feeReminder.create({
     data: { studentId, pendingAmountAtSend: pendingAmount, message },

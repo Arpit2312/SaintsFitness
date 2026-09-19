@@ -3,13 +3,14 @@
 import { prisma } from "@/lib/db";
 import { generateStudentCode } from "@/lib/ids";
 import { studentSchema, type StudentInput } from "@/lib/validations/student";
+import { notifyNewAdmission } from "@/lib/notifications/create";
 import { revalidatePath } from "next/cache";
 
 export async function createStudent(input: StudentInput, photoUrl?: string) {
   const data = studentSchema.parse(input);
   const studentCode = await generateStudentCode();
 
-  await prisma.student.create({
+  const student = await prisma.student.create({
     data: {
       studentCode,
       name: data.name,
@@ -47,7 +48,10 @@ export async function createStudent(input: StudentInput, photoUrl?: string) {
         create: { batchId: data.batchId },
       },
     },
+    select: { id: true },
   });
+
+  await notifyNewAdmission({ studentId: student.id, name: data.name });
 
   revalidatePath("/students");
   return studentCode;
