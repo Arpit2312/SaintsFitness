@@ -31,7 +31,7 @@ const NAV_ITEMS = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-export function Sidebar() {
+export function Sidebar({ academyName, logoUrl }: { academyName: string; logoUrl: string | null }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
 
@@ -43,7 +43,15 @@ export function Sidebar() {
       )}
     >
       <div className="flex items-center justify-between p-4">
-        {!collapsed && <span className="text-lg font-semibold text-gold">SAINTS</span>}
+        {!collapsed && (
+          <span className="flex items-center gap-2 text-lg font-semibold text-gold">
+            {logoUrl && (
+              // eslint-disable-next-line @next/next/no-img-element -- admin-configured external logo; next/image would need every host allow-listed
+              <img src={logoUrl} alt="" className="h-7 w-7 rounded object-contain" />
+            )}
+            {academyName}
+          </span>
+        )}
         <button
           onClick={() => setCollapsed((c) => !c)}
           className="rounded-md p-1 text-muted hover:text-gold"

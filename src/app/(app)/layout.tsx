@@ -2,6 +2,9 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { AppShell } from "@/components/layout/app-shell";
+import { getSettings } from "@/lib/queries/settings";
+import { countUnreadNotifications } from "@/lib/queries/notifications";
+import { syncTimeBasedNotifications } from "@/lib/notifications/sync";
 
 export default async function ProtectedLayout({
   children,
@@ -13,5 +16,24 @@ export default async function ProtectedLayout({
     redirect("/login");
   }
 
-  return <AppShell userName={session.user.name}>{children}</AppShell>;
+  // Throttled (at most once per 30 minutes across all requests); a failure
+  // here must never break page rendering.
+  try {
+    await syncTimeBasedNotifications();
+  } catch (error) {
+    console.error("Notification sync failed", error);
+  }
+
+  const [settings, unreadCount] = await Promise.all([getSettings(), countUnreadNotifications()]);
+
+  return (
+    <AppShell
+      userName={session.user.name}
+      academyName={settings.academyName}
+      logoUrl={settings.logoUrl}
+      unreadCount={unreadCount}
+    >
+      {children}
+    </AppShell>
+  );
 }

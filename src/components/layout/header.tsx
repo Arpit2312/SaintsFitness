@@ -1,4 +1,5 @@
 import { LogoutButton } from "@/components/auth/logout-button";
+import { NotificationBell } from "@/components/layout/notification-bell";
 
 export function greeting(hour: number): string {
   if (hour < 12) return "Good Morning";
@@ -19,7 +20,7 @@ function currentHourInIST(): number {
   return hour === 24 ? 0 : hour;
 }
 
-export function Header({ name }: { name: string }) {
+export function Header({ name, unreadCount }: { name: string; unreadCount: number }) {
   return (
     <header className="flex items-center justify-between border-b border-card-border px-6 py-4">
       <div>
@@ -30,7 +31,10 @@ export function Header({ name }: { name: string }) {
           Know Yourself • Move Your Body • Transform Your Life
         </p>
       </div>
-      <LogoutButton />
+      <div className="flex items-center gap-2">
+        <NotificationBell unreadCount={unreadCount} />
+        <LogoutButton />
+      </div>
     </header>
   );
 }
