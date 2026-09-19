@@ -1,3 +1,6 @@
+import { DEFAULT_REMINDER_TEMPLATE } from "@/lib/settings/defaults";
+import { renderReminderTemplate } from "@/lib/settings/reminder-template";
+
 /**
  * The WhatsApp reminder message text -- one source of truth used both
  * server-side (sendFeeReminder logs exactly this text) and client-side (the
@@ -8,11 +11,18 @@
  * cross a Server->Client component boundary (RSC serialization rejects
  * them), so callers convert via `.toNumber()` before this function ever
  * runs, on either side of that boundary.
+ *
+ * `options.template` is the admin-configured reminder template (Settings);
+ * with no options the output is exactly the pre-Settings message.
  */
-export function buildReminderMessage(name: string, pendingAmount: number): string {
-  const amountLabel = pendingAmount.toLocaleString("en-IN");
-  return [
-    "SAINTS – Fee Reminder",
-    `Hi ${name}, this is a reminder that ₹${amountLabel} is pending for your SAINTS fees. Please clear it at your earliest convenience. Thank you!`,
-  ].join("\n");
+export function buildReminderMessage(
+  name: string,
+  pendingAmount: number,
+  options: { template?: string; academyName?: string } = {}
+): string {
+  return renderReminderTemplate(options.template ?? DEFAULT_REMINDER_TEMPLATE, {
+    name,
+    amount: pendingAmount.toLocaleString("en-IN"),
+    academy: options.academyName ?? "SAINTS",
+  });
 }
