@@ -1,5 +1,7 @@
-import { PhaseStub } from "@/components/shared/phase-stub";
+import { listJourneyOverview } from "@/lib/queries/journey";
+import { JourneyOverview } from "@/components/journey/journey-overview";
 
-export default function JourneyPage() {
-  return <PhaseStub title="SAINTS Journey" phase="Phase 6" />;
+export default async function JourneyPage() {
+  const students = await listJourneyOverview();
+  return <JourneyOverview students={students} />;
 }

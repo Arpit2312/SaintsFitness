@@ -7,26 +7,31 @@ import { getStudentFeeHistory } from "@/lib/queries/fees";
 import { StudentFeesTab } from "@/components/students/student-fees-tab";
 import { getStudentAttendanceHistory, getStudentEnrolledBatches } from "@/lib/queries/attendance";
 import { StudentAttendanceTab } from "@/components/students/student-attendance-tab";
+import { getStudentJourney, listStudentNotes, getNoteInstructorOptions } from "@/lib/queries/journey";
+import { StudentJourneyTab } from "@/components/students/student-journey-tab";
+import { StudentNotesTab } from "@/components/students/student-notes-tab";
 
-function ComingSoon({ label }: { label: string }) {
-  return (
-    <div className="glass-card p-8 text-center text-muted">
-      {label} tracking arrives in a future phase of SAINTS.
-    </div>
-  );
-}
+const TAB_VALUES = ["overview", "fees", "attendance", "classes", "notes", "journey"] as const;
 
 export default async function StudentProfilePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ tab?: string | string[] }>;
 }) {
   const { id } = await params;
-  const [student, feeHistory, attendanceHistory, enrolledBatches] = await Promise.all([
+  const rawTab = (await searchParams).tab;
+  const requestedTab = Array.isArray(rawTab) ? rawTab[0] : rawTab;
+  const initialTab = (TAB_VALUES as readonly string[]).includes(requestedTab ?? "") ? requestedTab! : "overview";
+  const [student, feeHistory, attendanceHistory, enrolledBatches, journey, notes, noteOptions] = await Promise.all([
     getStudent(id),
     getStudentFeeHistory(id),
     getStudentAttendanceHistory(id),
     getStudentEnrolledBatches(id),
+    getStudentJourney(id),
+    listStudentNotes(id),
+    getNoteInstructorOptions(id),
   ]);
   if (!student) notFound();
 
@@ -69,7 +74,7 @@ export default async function StudentProfilePage({
         status={student.status}
       />
 
-      <Tabs defaultValue="overview">
+      <Tabs defaultValue={initialTab}>
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="fees">Fees</TabsTrigger>
@@ -159,11 +164,21 @@ export default async function StudentProfilePage({
         </TabsContent>
 
         <TabsContent value="notes">
-          <ComingSoon label="Instructor notes" />
+          <StudentNotesTab
+            studentId={student.id}
+            notes={notes}
+            instructors={noteOptions.instructors}
+            defaultInstructorId={noteOptions.defaultInstructorId}
+          />
         </TabsContent>
 
         <TabsContent value="journey">
-          <ComingSoon label="SAINTS Journey" />
+          <StudentJourneyTab
+            studentId={student.id}
+            progress={journey.progress}
+            attendanceRate={journey.attendanceRate}
+            recentNotes={journey.recentNotes}
+          />
         </TabsContent>
       </Tabs>
     </div>
