@@ -6,7 +6,7 @@ import "server-only";
 import type { Decimal } from "@prisma/client/runtime/library";
 import { prisma } from "@/lib/db";
 import { computeFeeHistory } from "@/lib/fees/fee-history";
-import { classifyDues, type DuesCategory } from "@/lib/reports/dues";
+import { classifyDues, nextUnpaidDueDate, type DuesCategory } from "@/lib/reports/dues";
 
 export type PendingStudentWithDues = {
   studentId: string;
@@ -16,6 +16,7 @@ export type PendingStudentWithDues = {
   totalPending: Decimal;
   pastDuePending: Decimal;
   category: DuesCategory;
+  nextDueDate: Date | null;
 };
 
 export async function listPendingStudentsWithDues(): Promise<PendingStudentWithDues[]> {
@@ -49,6 +50,7 @@ export async function listPendingStudentsWithDues(): Promise<PendingStudentWithD
       totalPending,
       pastDuePending,
       category,
+      nextDueDate: nextUnpaidDueDate(periods, today),
     });
   }
   return rows;

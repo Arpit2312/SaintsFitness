@@ -28,3 +28,16 @@ export function classifyDues(
   if (latest?.status === "PARTIAL") return { category: "PARTIAL", pastDuePending };
   return { category: "DUE", pastDuePending };
 }
+
+/**
+ * The earliest due date, not yet past, of a period that still has an unpaid
+ * balance (`null` if none). Periods are chronological; "not yet past due"
+ * matches classifyDues (a period due exactly `now` is not past due).
+ */
+export function nextUnpaidDueDate(periods: PeriodWithStatus[], now: Date): Date | null {
+  for (const p of periods) {
+    if (p.dueDate.getTime() < now.getTime()) continue;
+    if (p.amountDue.minus(p.amountPaid).gt(0)) return p.dueDate;
+  }
+  return null;
+}
