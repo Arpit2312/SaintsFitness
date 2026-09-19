@@ -1,4 +1,7 @@
 import { prisma } from "@/lib/db";
+import { getSettings } from "@/lib/queries/settings";
+import { formatReceiptNumber, receiptSequenceName } from "@/lib/settings/receipt";
+import type { SettingsValues } from "@/lib/settings/defaults";
 
 export function formatSequence(prefix: string, n: number, width: number): string {
   const padded = String(n).padStart(width, "0");
@@ -19,8 +22,11 @@ export async function generateStudentCode(): Promise<string> {
   return formatSequence("ST", n, 5);
 }
 
-export async function generateReceiptNumber(): Promise<string> {
+export async function generateReceiptNumber(
+  settings?: Pick<SettingsValues, "receiptPrefix" | "receiptIncludeYear">
+): Promise<string> {
+  const { receiptPrefix, receiptIncludeYear } = settings ?? (await getSettings());
   const year = new Date().getFullYear();
-  const n = await nextSequenceValue(`receipt-${year}`);
-  return formatSequence(`SNT-${year}`, n, 5);
+  const n = await nextSequenceValue(receiptSequenceName(receiptIncludeYear, year));
+  return formatReceiptNumber({ prefix: receiptPrefix, includeYear: receiptIncludeYear, year, sequence: n });
 }
