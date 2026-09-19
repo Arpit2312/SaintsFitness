@@ -1,9 +1,11 @@
 import { Users, UserCheck, Wallet, AlertCircle, CalendarClock, ClipboardCheck } from "lucide-react";
 import { StatCard } from "@/components/dashboard/stat-card";
+import { RecentActivity } from "@/components/dashboard/recent-activity";
 import { getDashboardStats } from "@/lib/queries/dashboard";
+import { getRecentActivity } from "@/lib/queries/activity";
 
 export default async function DashboardPage() {
-  const stats = await getDashboardStats();
+  const [stats, activity] = await Promise.all([getDashboardStats(), getRecentActivity()]);
 
   return (
     <div className="space-y-8">
@@ -21,6 +23,8 @@ export default async function DashboardPage() {
         <StatCard icon={AlertCircle} label="Pending Fees" value={`₹${stats.pendingFees.toLocaleString("en-IN")}`} />
         <StatCard icon={ClipboardCheck} label="Today's Attendance" value={`${stats.presentToday} / ${stats.expectedToday}`} />
       </div>
+
+      <RecentActivity events={activity} />
     </div>
   );
 }
