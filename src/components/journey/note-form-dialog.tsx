@@ -62,14 +62,16 @@ export function NoteFormDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent showCloseButton={!submitting}>
         <DialogHeader>
-          <DialogTitle>Add note</DialogTitle>
+          <DialogTitle>Add Note</DialogTitle>
           <DialogDescription>A reflection on this student&rsquo;s journey, from their instructor.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="noteInstructor">Instructor</Label>
+            {/* Always controlled ("" = nothing chosen yet); passing undefined here would
+                start uncontrolled and flip to controlled on first pick, which base-ui warns about. */}
             <Select
-              value={instructorId === "" ? undefined : instructorId}
+              value={instructorId}
               disabled={submitting}
               onValueChange={(v) => setInstructorId(v as string)}
             >
@@ -95,14 +97,15 @@ export function NoteFormDialog({
               onChange={(e) => setNote(e.target.value)}
               placeholder="Your movement is becoming more confident. Keep observing yourself."
               disabled={submitting}
+              className="max-h-48 overflow-y-auto"
             />
-            <p className="text-right text-xs text-muted">
+            <p className={note.length > MAX_LENGTH ? "text-right text-xs text-danger" : "text-right text-xs text-muted"}>
               {note.length} / {MAX_LENGTH}
             </p>
           </div>
           {error && <p className="text-sm text-danger">{error}</p>}
           <Button type="submit" className="w-full" disabled={submitting}>
-            {submitting ? "Saving..." : "Save note"}
+            {submitting ? "Saving..." : "Save Note"}
           </Button>
         </form>
       </DialogContent>

@@ -30,8 +30,12 @@ function scoreToState(score: number | null | undefined): string {
 }
 
 function toFormState(initial: JourneyProgressValues | null): FormState {
+  // danceLevel was a free-form String? before this phase, so an unrecognised
+  // stored value is seeded as unrated instead of making the first save fail zod.
+  const level = initial?.danceLevel;
+  const knownLevel = level && (DANCE_LEVELS as readonly string[]).includes(level) ? level : NONE;
   return {
-    danceLevel: initial?.danceLevel ?? NONE,
+    danceLevel: knownLevel,
     fitnessScore: scoreToState(initial?.fitnessScore),
     consistencyScore: scoreToState(initial?.consistencyScore),
     awarenessScore: scoreToState(initial?.awarenessScore),
@@ -124,14 +128,15 @@ export function ProgressFormDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent showCloseButton={!submitting}>
         <DialogHeader>
-          <DialogTitle>Update progress</DialogTitle>
+          <DialogTitle>Update Progress</DialogTitle>
           <DialogDescription>
             Reflect only what you have observed. Anything left as &ldquo;{NONE_LABEL}&rdquo; stays quietly unrated.
+            Movement combines dance level and fitness.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="danceLevel">Dance level</Label>
+            <Label htmlFor="danceLevel">Dance Level</Label>
             <ChoiceSelect
               id="danceLevel"
               value={form.danceLevel}
@@ -155,7 +160,7 @@ export function ProgressFormDialog({
             </div>
           ))}
           <Button type="submit" className="w-full" disabled={submitting}>
-            {submitting ? "Saving..." : "Save progress"}
+            {submitting ? "Saving..." : "Save Progress"}
           </Button>
         </form>
       </DialogContent>

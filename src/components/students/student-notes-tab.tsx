@@ -38,7 +38,7 @@ export function StudentNotesTab({
           disabled={instructors.length === 0}
         >
           <Plus size={16} className="mr-2" />
-          Add note
+          Add Note
         </Button>
       </div>
       {instructors.length === 0 && (
@@ -53,15 +53,15 @@ export function StudentNotesTab({
         <div className="glass-card divide-y divide-card-border">
           {notes.map((note) => (
             <div key={note.id} className="flex items-start justify-between gap-4 p-4">
-              <div className="space-y-1">
-                <p className="whitespace-pre-wrap text-foreground">{note.note}</p>
+              <div className="min-w-0 space-y-1">
+                <p className="whitespace-pre-wrap break-words text-foreground">{note.note}</p>
                 <p className="text-xs text-muted">
                   {note.instructorName} · {formatDateUTC(note.createdAt)}
                 </p>
               </div>
               <button
                 onClick={() => setDeleteTarget(note)}
-                className="rounded p-1 text-muted hover:text-danger"
+                className="shrink-0 rounded p-1 text-muted hover:text-danger"
                 aria-label="Delete note"
               >
                 <Trash2 size={16} />

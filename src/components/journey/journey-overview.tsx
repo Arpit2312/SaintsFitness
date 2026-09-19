@@ -20,7 +20,10 @@ const SNIPPET_LENGTH = 120;
 
 function snippet(text: string): string {
   const oneLine = text.replace(/\s+/g, " ").trim();
-  return oneLine.length > SNIPPET_LENGTH ? `${oneLine.slice(0, SNIPPET_LENGTH).trimEnd()}…` : oneLine;
+  // Array.from splits by code point, so an emoji or other astral character is
+  // never cut in half at the boundary (String.slice works on UTF-16 units).
+  const chars = Array.from(oneLine);
+  return chars.length > SNIPPET_LENGTH ? `${chars.slice(0, SNIPPET_LENGTH).join("").trimEnd()}…` : oneLine;
 }
 
 export function JourneyOverview({ students }: { students: JourneyOverviewStudent[] }) {
@@ -50,7 +53,7 @@ export function JourneyOverview({ students }: { students: JourneyOverviewStudent
               <Link
                 key={student.studentId}
                 href={`/students/${student.studentId}?tab=journey`}
-                className="glass-card block space-y-4 p-5 transition-colors hover:border-gold"
+                className="glass-card block min-w-0 space-y-4 p-5 transition-colors hover:border-gold"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -62,7 +65,7 @@ export function JourneyOverview({ students }: { students: JourneyOverviewStudent
                 <JourneyPath items={toJourneyItems(qualities)} compact />
                 {student.latestNote ? (
                   <div className="space-y-1">
-                    <p className="text-sm text-muted">&ldquo;{snippet(student.latestNote.note)}&rdquo;</p>
+                    <p className="break-words text-sm text-muted">&ldquo;{snippet(student.latestNote.note)}&rdquo;</p>
                     <p className="text-xs text-muted">{formatDateUTC(student.latestNote.createdAt)}</p>
                   </div>
                 ) : (

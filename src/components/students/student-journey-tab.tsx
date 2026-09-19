@@ -37,7 +37,10 @@ export function StudentJourneyTab({
     attendanceRate,
   });
   const items = toJourneyItems(qualities);
-  const hasAnyReflection = items.some((item) => item.value !== null);
+  // Discipline is derived from attendance, so it doesn't count as a reflection:
+  // a student who has attended classes but has no progress reflections yet
+  // should still get the "begin this journey" prompt.
+  const hasAnyReflection = items.some((item) => item.key !== "discipline" && item.value !== null);
 
   return (
     <div className="space-y-6">
@@ -63,21 +66,22 @@ export function StudentJourneyTab({
             }}
           >
             <Pencil size={16} className="mr-2" />
-            Update progress
+            Update Progress
           </Button>
         </div>
 
         <JourneyPath items={items} />
+        <p className="text-center text-xs text-muted">Discipline reflects attendance over the last 90 days.</p>
 
         {!hasAnyReflection && (
           <p className="text-center text-sm text-muted">
-            Begin this journey &mdash; add a first reflection with &ldquo;Update progress&rdquo;.
+            Begin this journey &mdash; add a first reflection with &ldquo;Update Progress&rdquo;.
           </p>
         )}
       </div>
 
       <div className="glass-card space-y-3 p-6">
-        <h3 className="font-semibold text-foreground">Recent reflections</h3>
+        <h3 className="font-semibold text-foreground">Recent Reflections</h3>
         {recentNotes.length === 0 ? (
           <p className="py-4 text-center text-sm text-muted">
             No reflections yet. Instructors can add notes from the Notes tab.
@@ -86,7 +90,7 @@ export function StudentJourneyTab({
           <div className="divide-y divide-card-border">
             {recentNotes.map((note) => (
               <div key={note.id} className="space-y-1 py-3">
-                <p className="whitespace-pre-wrap text-foreground">{note.note}</p>
+                <p className="whitespace-pre-wrap break-words text-foreground">{note.note}</p>
                 <p className="text-xs text-muted">
                   {note.instructorName} · {formatDateUTC(note.createdAt)}
                 </p>

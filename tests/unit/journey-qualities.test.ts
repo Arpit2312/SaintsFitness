@@ -98,7 +98,11 @@ describe("toJourneyItems", () => {
     expect(items.map((i) => i.label)).toEqual(["Movement", "Discipline", "Consistency", "Awareness", "Self Growth"]);
     expect(items.map((i) => i.key)).toEqual(["movement", "discipline", "consistency", "awareness", "selfGrowth"]);
     expect(items.map((i) => i.word)).toEqual(["Growing", "Not yet reflected", "Growing", "Beginning", "Flourishing"]);
-    expect(items[1].value).toBeNull();
+    expect(items.map((i) => i.value)).toEqual([66, null, 70, 20, 100]);
+  });
+
+  it("treats a dance level with the wrong case as unrated", () => {
+    expect(computeJourneyQualities({ ...EMPTY, danceLevel: "beginner" }).movement).toBeNull();
   });
 
   it("exposes the three dance levels", () => {

@@ -12,9 +12,11 @@ const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
 // A soft ring whose gold arc fills in proportion to the quality. An unrated
 // quality is a faint dashed ring, not an empty (0%) one -- "not yet
-// reflected" is different from "low".
-function Ring({ item, size }: { item: JourneyPathItem; size: number }) {
-  const value = item.value;
+// reflected" is different from "low". `decorative` rings sit next to visible
+// label text, so they are hidden from assistive tech to avoid announcing
+// every quality twice.
+function Ring({ item, size, decorative }: { item: JourneyPathItem; size: number; decorative: boolean }) {
+  const value = item.value === null ? null : Math.min(100, Math.max(0, item.value));
   const offset = value === null ? 0 : RING_CIRCUMFERENCE * (1 - value / 100);
   const description = `${item.label}: ${item.word}`;
 
@@ -23,11 +25,10 @@ function Ring({ item, size }: { item: JourneyPathItem; size: number }) {
       width={size}
       height={size}
       viewBox="0 0 48 48"
-      role="img"
-      aria-label={description}
       className="rounded-full bg-background"
+      {...(decorative ? { "aria-hidden": true } : { role: "img", "aria-label": description })}
     >
-      <title>{description}</title>
+      {!decorative && <title>{description}</title>}
       <circle
         cx="24"
         cy="24"
@@ -38,7 +39,8 @@ function Ring({ item, size }: { item: JourneyPathItem; size: number }) {
         strokeWidth="3"
         strokeDasharray={value === null ? "3 5" : undefined}
       />
-      {value !== null && (
+      {/* Skipped at 0%: a zero-length dash with round caps can render as a dot in some browsers. */}
+      {value !== null && value > 0 && (
         <circle
           cx="24"
           cy="24"
@@ -69,11 +71,12 @@ export function JourneyPath({ items, compact = false }: { items: JourneyPathItem
         <ol className="relative grid grid-cols-5 gap-1">
           {items.map((item) => (
             <li key={item.key} className="flex flex-col items-center gap-1.5 text-center">
-              <Ring item={item} size={size} />
+              <Ring item={item} size={size} decorative={!compact} />
               {!compact && (
                 <>
-                  <span className="text-sm text-foreground">{item.label}</span>
-                  <span className="text-xs text-muted">{item.word}</span>
+                  {/* Smaller text below sm: five labels share ~50px columns on a phone. */}
+                  <span className="text-[10px] text-foreground sm:text-sm">{item.label}</span>
+                  <span className="text-[10px] text-muted sm:text-xs">{item.word}</span>
                 </>
               )}
             </li>
