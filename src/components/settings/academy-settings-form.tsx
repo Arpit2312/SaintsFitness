@@ -41,6 +41,14 @@ export function AcademySettingsForm({ initial }: { initial: FormState }) {
     try {
       await saveAcademySettings(form);
       toast.success("Academy settings saved");
+      // Show what the server actually stored (trimmed, empty optionals cleared).
+      setForm({
+        academyName: parsed.data.academyName,
+        logoUrl: parsed.data.logoUrl ?? "",
+        address: parsed.data.address ?? "",
+        mobile: parsed.data.mobile ?? "",
+        email: parsed.data.email ?? "",
+      });
       router.refresh();
     } catch {
       toast.error("Something went wrong. Please try again.");

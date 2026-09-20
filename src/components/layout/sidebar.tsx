@@ -44,10 +44,16 @@ export function Sidebar({ academyName, logoUrl }: { academyName: string; logoUrl
     >
       <div className="flex items-center justify-between p-4">
         {!collapsed && (
-          <span className="flex items-center gap-2 text-lg font-semibold text-gold">
+          <span className="flex min-w-0 items-center gap-2 truncate text-lg font-semibold text-gold">
             {logoUrl && (
               // eslint-disable-next-line @next/next/no-img-element -- admin-configured external logo; next/image would need every host allow-listed
-              <img src={logoUrl} alt="" className="h-7 w-7 rounded object-contain" />
+              <img
+                src={logoUrl}
+                alt=""
+                referrerPolicy="no-referrer"
+                loading="lazy"
+                className="h-7 w-7 shrink-0 rounded object-contain"
+              />
             )}
             {academyName}
           </span>

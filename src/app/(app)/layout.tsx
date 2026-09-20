@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { AppShell } from "@/components/layout/app-shell";
 import { getSettings } from "@/lib/queries/settings";
+import { DEFAULT_SETTINGS } from "@/lib/settings/defaults";
 import { countUnreadNotifications } from "@/lib/queries/notifications";
 import { syncTimeBasedNotifications } from "@/lib/notifications/sync";
 
@@ -24,7 +25,16 @@ export default async function ProtectedLayout({
     console.error("Notification sync failed", error);
   }
 
-  const [settings, unreadCount] = await Promise.all([getSettings(), countUnreadNotifications()]);
+  const [settings, unreadCount] = await Promise.all([
+    getSettings().catch((error) => {
+      console.error("Failed to load settings", error);
+      return DEFAULT_SETTINGS;
+    }),
+    countUnreadNotifications().catch((error) => {
+      console.error("Failed to count unread notifications", error);
+      return 0;
+    }),
+  ]);
 
   return (
     <AppShell

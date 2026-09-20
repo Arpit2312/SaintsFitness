@@ -43,6 +43,12 @@ export function ReminderSettingsForm({ initial, academyName }: { initial: FormSt
     try {
       await saveReminderSettings(form);
       toast.success("Fee reminder settings saved");
+      // Show what the server actually stored (trimmed template, coerced day counts).
+      setForm({
+        reminderTemplate: parsed.data.reminderTemplate,
+        dueSoonDays: String(parsed.data.dueSoonDays),
+        overdueReminderDays: String(parsed.data.overdueReminderDays),
+      });
       router.refresh();
     } catch {
       toast.error("Something went wrong. Please try again.");

@@ -54,6 +54,8 @@ export async function createStudent(input: StudentInput, photoUrl?: string) {
   await notifyNewAdmission({ studentId: student.id, name: data.name });
 
   revalidatePath("/students");
+  // The header notification badge lives in the shared layout, and notifyNewAdmission just wrote a notification.
+  revalidatePath("/", "layout");
   return studentCode;
 }
 

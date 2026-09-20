@@ -121,6 +121,8 @@ export async function createPayment(studentId: string, input: PaymentInput) {
   revalidatePath(`/students/${studentId}`);
   revalidatePath("/fees");
   revalidatePath("/dashboard");
+  // The header notification badge lives in the shared layout, and notifyPaymentReceived just wrote a notification.
+  revalidatePath("/", "layout");
 
   return payment;
 }

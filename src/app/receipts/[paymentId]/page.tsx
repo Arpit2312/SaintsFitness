@@ -53,7 +53,13 @@ export default async function ReceiptPage({
         <div className="text-center">
           {settings.logoUrl && (
             // eslint-disable-next-line @next/next/no-img-element -- admin-configured external logo; next/image would need every host allow-listed
-            <img src={settings.logoUrl} alt="" className="mx-auto mb-2 h-12 w-12 object-contain" />
+            <img
+              src={settings.logoUrl}
+              alt=""
+              referrerPolicy="no-referrer"
+              loading="lazy"
+              className="mx-auto mb-2 h-12 w-12 object-contain"
+            />
           )}
           <p className="text-lg font-semibold text-gold print:text-black">{settings.academyName}</p>
           <p className="text-sm text-muted print:text-black">Dance • Zumba • Movement • Self Knowledge</p>

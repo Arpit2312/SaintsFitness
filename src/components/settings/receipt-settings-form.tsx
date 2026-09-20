@@ -26,13 +26,16 @@ export function ReceiptSettingsForm({ initial, year }: { initial: FormState; yea
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
-  const previewPrefix = form.receiptPrefix.trim() === "" ? "SNT" : form.receiptPrefix;
-  const preview = formatReceiptNumber({
-    prefix: previewPrefix,
-    includeYear: form.receiptIncludeYear,
-    year,
-    sequence: 45,
-  });
+  const prefix = form.receiptPrefix.trim().toUpperCase();
+  const prefixValid = /^[A-Z0-9]{2,8}$/.test(prefix);
+  const preview = prefixValid
+    ? formatReceiptNumber({
+        prefix,
+        includeYear: form.receiptIncludeYear,
+        year,
+        sequence: 45,
+      })
+    : null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -46,6 +49,12 @@ export function ReceiptSettingsForm({ initial, year }: { initial: FormState; yea
     try {
       await saveReceiptSettings(form);
       toast.success("Receipt settings saved");
+      // Show what the server actually stored (trimmed, upper-cased prefix).
+      setForm({
+        receiptPrefix: parsed.data.receiptPrefix,
+        receiptIncludeYear: parsed.data.receiptIncludeYear,
+        receiptFooter: parsed.data.receiptFooter,
+      });
       router.refresh();
     } catch {
       toast.error("Something went wrong. Please try again.");
@@ -78,10 +87,14 @@ export function ReceiptSettingsForm({ initial, year }: { initial: FormState; yea
         />
         <Label htmlFor="receiptIncludeYear">Include the year in receipt numbers</Label>
       </div>
-      <p className="text-sm text-muted">
-        Next receipts will look like <span className="text-foreground">{preview}</span>. Existing receipts are not
-        changed.
-      </p>
+      {preview ? (
+        <p className="text-sm text-muted">
+          Next receipts will look like <span className="text-foreground">{preview}</span>. Existing receipts are not
+          changed.
+        </p>
+      ) : (
+        <p className="text-sm text-muted">Enter a 2-8 character prefix (letters or digits) to see a preview.</p>
+      )}
       <div className="space-y-2">
         <Label htmlFor="receiptFooter">Footer Message</Label>
         <Input

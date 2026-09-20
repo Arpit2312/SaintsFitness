@@ -5,7 +5,13 @@ import { getDashboardStats } from "@/lib/queries/dashboard";
 import { getRecentActivity } from "@/lib/queries/activity";
 
 export default async function DashboardPage() {
-  const [stats, activity] = await Promise.all([getDashboardStats(), getRecentActivity()]);
+  const [stats, activity] = await Promise.all([
+    getDashboardStats(),
+    getRecentActivity().catch((error) => {
+      console.error("Recent activity failed", error);
+      return [];
+    }),
+  ]);
 
   return (
     <div className="space-y-8">

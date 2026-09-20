@@ -7,7 +7,7 @@ export function NotificationBell({ unreadCount }: { unreadCount: number }) {
     <Link
       href="/notifications"
       aria-label={label}
-      className="relative rounded-md p-2 text-muted transition-colors hover:text-gold"
+      className="relative rounded-md p-2 text-muted outline-none transition-colors hover:text-gold focus-visible:ring-2 focus-visible:ring-ring/50"
     >
       <Bell size={20} />
       {unreadCount > 0 && (

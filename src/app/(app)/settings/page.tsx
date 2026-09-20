@@ -1,4 +1,5 @@
 import { getSettings } from "@/lib/queries/settings";
+import { todayInIST } from "@/lib/dates";
 import { AcademySettingsForm } from "@/components/settings/academy-settings-form";
 import { ReceiptSettingsForm } from "@/components/settings/receipt-settings-form";
 import { ReminderSettingsForm } from "@/components/settings/reminder-settings-form";
@@ -6,7 +7,8 @@ import { ChangePasswordForm } from "@/components/settings/change-password-form";
 
 export default async function SettingsPage() {
   const settings = await getSettings();
-  const year = new Date().getFullYear();
+  // IST year, matching the receipt generator.
+  const year = todayInIST().getUTCFullYear();
 
   return (
     <div className="space-y-6">
