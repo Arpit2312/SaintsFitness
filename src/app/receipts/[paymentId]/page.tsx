@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
-import { format } from "date-fns";
+import { formatDateUTC } from "@/lib/dates";
 import { auth } from "@/lib/auth";
 import { getPayment } from "@/lib/queries/fees";
 import { getSettings } from "@/lib/queries/settings";
@@ -43,7 +43,7 @@ export default async function ReceiptPage({
     `Student: ${payment.student.name}`,
     `Amount: ₹${amountLabel}`,
     `For: ${periodLabel}`,
-    `Paid via ${MODE_LABELS[payment.mode]} on ${format(payment.paymentDate, "dd MMM yyyy")}`,
+    `Paid via ${MODE_LABELS[payment.mode]} on ${formatDateUTC(payment.paymentDate)}`,
     ...(settings.receiptFooter ? [settings.receiptFooter] : []),
   ].join("\n");
 
@@ -95,7 +95,7 @@ export default async function ReceiptPage({
           </div>
           <div className="flex justify-between">
             <span className="text-muted print:text-black">Date</span>
-            <span className="text-foreground print:text-black">{format(payment.paymentDate, "dd MMM yyyy")}</span>
+            <span className="text-foreground print:text-black">{formatDateUTC(payment.paymentDate)}</span>
           </div>
         </div>
 

@@ -113,10 +113,13 @@ export function AddPaymentDialog({
       toast.success("Payment recorded", {
         description: payment.receiptNumber ? `Receipt ${payment.receiptNumber}` : undefined,
         duration: 12000,
-        action: {
-          label: "View Receipt",
-          onClick: () => window.open(`/receipts/${payment.id}`, "_blank", "noopener,noreferrer"),
-        },
+        // No button if there is no receipt (the receipt page would 404).
+        action: payment.receiptNumber
+          ? {
+              label: "View Receipt",
+              onClick: () => window.open(`/receipts/${payment.id}`, "_blank", "noopener,noreferrer"),
+            }
+          : undefined,
       });
       onOpenChange(false);
       onSuccess?.();

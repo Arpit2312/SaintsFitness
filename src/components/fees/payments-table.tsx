@@ -4,7 +4,6 @@ import { buttonVariants } from "@/components/ui/button";
 import { formatDateUTC } from "@/lib/dates";
 import { formatMonthYear } from "@/lib/fees/periods";
 import { paymentModeLabel } from "@/lib/notifications/candidates";
-import { cn } from "@/lib/utils";
 
 // What actually crosses the Server -> Client boundary: page.tsx converts each
 // payment's Decimal amount to a plain number first.
@@ -60,7 +59,7 @@ export function PaymentsTable({ payments }: { payments: SerializedPayment[] }) {
                         href={`/receipts/${payment.id}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+                        className={buttonVariants({ variant: "outline", size: "sm" })}
                       >
                         View Receipt
                       </a>
