@@ -63,8 +63,11 @@ export function RemindersList({ students }: { students: PendingFeeStudent[] }) {
       ) : (
         <div className="glass-card divide-y divide-card-border">
           {students.map((student) => (
-            <div key={student.studentId} className="flex items-center justify-between gap-4 p-4">
-              <div>
+            <div
+              key={student.studentId}
+              className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+            >
+              <div className="min-w-0">
                 <p className="font-medium text-foreground">{student.name}</p>
                 <p className="text-sm text-muted">
                   {student.studentCode} · ₹{student.totalPending.toLocaleString("en-IN")} pending
