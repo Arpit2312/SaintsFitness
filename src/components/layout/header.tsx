@@ -1,4 +1,5 @@
 import { LogoutButton } from "@/components/auth/logout-button";
+import { MobileNavButton } from "@/components/layout/mobile-nav";
 import { NotificationBell } from "@/components/layout/notification-bell";
 
 export function greeting(hour: number): string {
@@ -22,16 +23,20 @@ function currentHourInIST(): number {
 
 export function Header({ name, unreadCount }: { name: string; unreadCount: number }) {
   return (
-    <header className="flex items-center justify-between border-b border-card-border px-6 py-4">
-      <div>
-        <p className="text-lg text-foreground">
-          {greeting(currentHourInIST())}, <span className="text-gold">{name}</span>
-        </p>
-        <p className="text-sm text-muted">
-          Know Yourself • Move Your Body • Transform Your Life
-        </p>
+    <header className="flex items-center justify-between gap-3 border-b border-card-border px-4 py-3 md:px-6 md:py-4">
+      <div className="flex min-w-0 items-center gap-2">
+        <MobileNavButton />
+        <div className="min-w-0">
+          <p className="truncate text-base text-foreground md:text-lg">
+            {greeting(currentHourInIST())}, <span className="text-gold">{name}</span>
+          </p>
+          {/* The tagline needs room; on phones the greeting alone is enough. */}
+          <p className="hidden text-sm text-muted md:block">
+            Know Yourself • Move Your Body • Transform Your Life
+          </p>
+        </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-1 md:gap-2">
         <NotificationBell unreadCount={unreadCount} />
         <LogoutButton />
       </div>
