@@ -16,6 +16,16 @@ export const auth = betterAuth({
     // via Prisma (User + Account rows) instead of calling signUpEmail.
     disableSignUp: true,
   },
+  session: {
+    // Validate the session from a signed cookie for up to 5 minutes instead of
+    // querying Session + User on every render. Every page load, refresh and
+    // Server Action re-renders the layout, which calls getSession; each DB
+    // lookup is a full network round trip. Trade-off: a session revoked
+    // elsewhere (e.g. "sign out other sessions" on password change) is honoured
+    // within 5 minutes, not instantly. Signing out on this device clears the
+    // cookie at once.
+    cookieCache: { enabled: true, maxAge: 5 * 60 },
+  },
   user: {
     additionalFields: {
       // input: false means role can never be set from client-supplied request
