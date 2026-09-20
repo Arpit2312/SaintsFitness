@@ -47,3 +47,22 @@ export function formatDateUTC(date: Date): string {
     timeZone: "UTC",
   }).format(date);
 }
+
+/**
+ * A real instant (a `createdAt`/`sentAt` timestamp, NOT a UTC-midnight
+ * calendar day) as an IST date and time, e.g. "20 Sept 2026, 2:00 am".
+ * formatDateUTC is only for calendar-day fields: applied to a timestamp it
+ * shows the previous day for anything between 00:00 and 05:30 IST and cannot
+ * order events within a day.
+ */
+export function formatDateTimeIST(date: Date): string {
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "Asia/Kolkata",
+  }).format(date);
+}

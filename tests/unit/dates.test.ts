@@ -1,5 +1,24 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { startOfUTCDay, endOfUTCDay, weekdayAbbrevUTC, formatDateUTC, todayInIST } from "@/lib/dates";
+import { startOfUTCDay, endOfUTCDay, weekdayAbbrevUTC, formatDateUTC, formatDateTimeIST, todayInIST } from "@/lib/dates";
+
+describe("formatDateTimeIST", () => {
+  // Regexes tolerate ICU differences ("Sep" vs "Sept", "am" vs "AM", a comma).
+  it("shows the IST calendar day, not the UTC one, for an early-morning IST instant", () => {
+    // 2026-09-19T20:30Z = 20 Sep 2026, 02:00 IST
+    expect(formatDateTimeIST(new Date("2026-09-19T20:30:00.000Z"))).toMatch(/^20 Sep\w* 2026,? 2:00\s?am$/i);
+  });
+
+  it("formats an afternoon IST instant in 12-hour time", () => {
+    // 2026-09-19T08:00Z = 19 Sep 2026, 13:30 IST
+    expect(formatDateTimeIST(new Date("2026-09-19T08:00:00.000Z"))).toMatch(/^19 Sep\w* 2026,? 1:30\s?pm$/i);
+  });
+
+  it("distinguishes two events on the same day", () => {
+    const morning = formatDateTimeIST(new Date("2026-09-19T03:30:00.000Z")); // 09:00 IST
+    const evening = formatDateTimeIST(new Date("2026-09-19T13:30:00.000Z")); // 19:00 IST
+    expect(morning).not.toBe(evening);
+  });
+});
 
 describe("startOfUTCDay", () => {
   it("floors a UTC instant to that day's midnight", () => {
