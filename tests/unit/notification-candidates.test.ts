@@ -22,6 +22,12 @@ describe("formatInr", () => {
   });
 });
 
+describe("SYNC_INTERVAL_MS", () => {
+  it("is 30 minutes", () => {
+    expect(SYNC_INTERVAL_MS).toBe(1_800_000);
+  });
+});
+
 describe("isSyncStale", () => {
   const now = new Date("2026-09-19T10:00:00Z");
 
@@ -82,6 +88,15 @@ describe("buildDueSoonCandidates", () => {
 
   it("includes a fee due today", () => {
     expect(buildDueSoonCandidates([row(new Date(Date.UTC(2026, 8, 13, 23, 59, 59, 999)))], today, 3)).toHaveLength(1);
+  });
+
+  it("includes a fee due at exactly 00:00 UTC on today", () => {
+    expect(buildDueSoonCandidates([row(new Date("2026-09-13T00:00:00.000Z"))], today, 3)).toHaveLength(1);
+  });
+
+  it("still includes a 00:00 due date today when `today` is not at midnight", () => {
+    const midday = new Date("2026-09-13T12:00:00Z");
+    expect(buildDueSoonCandidates([row(new Date("2026-09-13T00:00:00.000Z"))], midday, 3)).toHaveLength(1);
   });
 
   it("includes a fee due on the last day of the window", () => {
@@ -151,5 +166,9 @@ describe("event message builders", () => {
     expect(paymentModeLabel("ONLINE")).toBe("Online Payment");
     expect(paymentModeLabel("BANK_TRANSFER")).toBe("Bank Transfer");
     expect(paymentModeLabel("CHEQUE")).toBe("CHEQUE");
+  });
+
+  it("does not resolve inherited object keys", () => {
+    expect(paymentModeLabel("constructor")).toBe("constructor");
   });
 });

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { todayInIST } from "@/lib/dates";
 import { getSettings } from "@/lib/queries/settings";
 import { formatReceiptNumber, receiptSequenceName } from "@/lib/settings/receipt";
 import type { SettingsValues } from "@/lib/settings/defaults";
@@ -26,7 +27,7 @@ export async function generateReceiptNumber(
   settings?: Pick<SettingsValues, "receiptPrefix" | "receiptIncludeYear">
 ): Promise<string> {
   const { receiptPrefix, receiptIncludeYear } = settings ?? (await getSettings());
-  const year = new Date().getFullYear();
+  const year = todayInIST().getUTCFullYear();
   const n = await nextSequenceValue(receiptSequenceName(receiptIncludeYear, year));
   return formatReceiptNumber({ prefix: receiptPrefix, includeYear: receiptIncludeYear, year, sequence: n });
 }

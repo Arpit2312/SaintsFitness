@@ -17,6 +17,10 @@ describe("renderReminderTemplate", () => {
     expect(renderReminderTemplate("Hi {name} {foo}", VALUES)).toBe("Hi Aarav Shah {foo}");
   });
 
+  it("does not substitute upper-case or spaced placeholders", () => {
+    expect(renderReminderTemplate("{NAME} { name }", VALUES)).toBe("{NAME} { name }");
+  });
+
   it("does not re-substitute placeholder-looking text inside a value", () => {
     expect(renderReminderTemplate("Hi {name}", { ...VALUES, name: "{amount}" })).toBe("Hi {amount}");
   });

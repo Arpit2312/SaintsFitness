@@ -8,7 +8,7 @@ import { DEFAULT_SETTINGS, SETTINGS_ID, type SettingsValues } from "@/lib/settin
 
 export async function getSettings(): Promise<SettingsValues> {
   const row = await prisma.academySettings.findUnique({ where: { id: SETTINGS_ID } });
-  if (!row) return DEFAULT_SETTINGS;
+  if (!row) return { ...DEFAULT_SETTINGS };
 
   return {
     academyName: row.academyName,

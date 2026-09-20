@@ -6,6 +6,13 @@ import { extractPlaceholders } from "@/lib/settings/reminder-template";
 const emptyToNull = (value: unknown): unknown =>
   value === undefined || (typeof value === "string" && value.trim() === "") ? null : value;
 
+// Mobile keyboards often auto-capitalise the scheme ("HTTPS://..."); store it
+// lower-cased so the https check and the saved value are consistent.
+const normalizeLogoUrl = (value: unknown): unknown => {
+  const cleaned = emptyToNull(value);
+  return typeof cleaned === "string" ? cleaned.trim().replace(/^https:\/\//i, "https://") : cleaned;
+};
+
 // Day counts arrive as numbers or as text-input strings.
 const wholeNumber = (min: number, max: number, label: string) =>
   z.preprocess(
@@ -24,11 +31,12 @@ export const academySettingsSchema = z.object({
     .min(2, "Academy name is required")
     .max(60, "Academy name can be at most 60 characters"),
   logoUrl: z.preprocess(
-    emptyToNull,
+    normalizeLogoUrl,
     z
       .string()
       .trim()
       .url("Enter a valid URL")
+      .max(2048, "Logo URL is too long")
       .refine((value) => value.startsWith("https://"), "Logo URL must start with https://")
       .nullable()
   ),

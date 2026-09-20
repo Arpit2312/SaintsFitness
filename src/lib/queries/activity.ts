@@ -14,7 +14,7 @@ const LIMIT = 10;
 const JOIN_AFTER_ADMISSION_MS = 60 * 1000;
 
 export async function getRecentActivity(): Promise<ActivityEvent[]> {
-  const [payments, students, enrollments, reminders, attendance] = await Promise.all([
+  const [payments, students, enrollments, reminders, recentAttendance] = await Promise.all([
     prisma.payment.findMany({
       where: { student: { deletedAt: null } },
       orderBy: { createdAt: "desc" },
@@ -47,9 +47,31 @@ export async function getRecentActivity(): Promise<ActivityEvent[]> {
       where: { student: { deletedAt: null }, batch: { deletedAt: null } },
       orderBy: { createdAt: "desc" },
       take: ATTENDANCE_ROWS,
-      select: { batchId: true, date: true, status: true, createdAt: true, batch: { select: { name: true } } },
+      select: { batchId: true, date: true },
     }),
   ]);
+
+  // The row-limited read above only discovers WHICH (batch, date) roll calls
+  // are recent; a roll call cut by the row limit would otherwise be counted
+  // from a partial set. Re-read every row of exactly those roll calls.
+  const recentGroups = new Map<string, { batchId: string; date: Date }>();
+  for (const row of recentAttendance) {
+    const key = `${row.batchId}|${row.date.toISOString().slice(0, 10)}`;
+    if (!recentGroups.has(key) && recentGroups.size < PER_SOURCE) {
+      recentGroups.set(key, { batchId: row.batchId, date: row.date });
+    }
+  }
+  const attendance =
+    recentGroups.size === 0
+      ? []
+      : await prisma.attendance.findMany({
+          where: {
+            OR: [...recentGroups.values()].map((g) => ({ batchId: g.batchId, date: g.date })),
+            student: { deletedAt: null },
+            batch: { deletedAt: null },
+          },
+          select: { batchId: true, date: true, status: true, createdAt: true, batch: { select: { name: true } } },
+        });
 
   const events: ActivityEvent[] = [
     ...payments.map((p) => ({

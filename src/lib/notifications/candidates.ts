@@ -1,4 +1,4 @@
-import { formatDateUTC } from "@/lib/dates";
+import { formatDateUTC, startOfUTCDay } from "@/lib/dates";
 
 export const NOTIFICATION_TYPES = [
   "FEE_OVERDUE",
@@ -61,7 +61,7 @@ export function buildDueSoonCandidates(
   today: Date,
   withinDays: number
 ): NotificationCandidate[] {
-  const start = today.getTime();
+  const start = startOfUTCDay(today).getTime();
   const endExclusive = start + (withinDays + 1) * DAY_MS;
   const result: NotificationCandidate[] = [];
   for (const r of rows) {
@@ -109,5 +109,5 @@ const PAYMENT_MODE_LABELS: Record<string, string> = {
 };
 
 export function paymentModeLabel(mode: string): string {
-  return PAYMENT_MODE_LABELS[mode] ?? mode;
+  return Object.prototype.hasOwnProperty.call(PAYMENT_MODE_LABELS, mode) ? PAYMENT_MODE_LABELS[mode] : mode;
 }

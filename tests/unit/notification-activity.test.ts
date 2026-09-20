@@ -22,6 +22,19 @@ describe("mergeActivity", () => {
     expect(mergeActivity(events, 10)[0].text).toBe("e14");
   });
 
+  it("keeps input order for events with equal timestamps", () => {
+    const same = at("2026-09-01T00:00:00Z");
+    const merged = mergeActivity(
+      [
+        { at: same, text: "first" },
+        { at: same, text: "second" },
+        { at: same, text: "third" },
+      ],
+      10
+    );
+    expect(merged.map((e) => e.text)).toEqual(["first", "second", "third"]);
+  });
+
   it("returns an empty array for no events and does not mutate its input", () => {
     expect(mergeActivity([], 10)).toEqual([]);
     const input = [
@@ -68,6 +81,24 @@ describe("summarizeAttendance", () => {
       row("b1", "Batch", "2026-09-13T00:00:00Z", "ABSENT", "2026-09-13T06:00:00Z"),
     ]);
     expect(event.text).toBe("Batch attendance marked: 0 of 2 present.");
+  });
+
+  it("takes the event time from the latest createdAt even when rows arrive newest-first", () => {
+    const [event] = summarizeAttendance([
+      row("b1", "Batch", "2026-09-13T00:00:00Z", "PRESENT", "2026-09-13T06:00:10Z"),
+      row("b1", "Batch", "2026-09-13T00:00:00Z", "PRESENT", "2026-09-13T06:00:05Z"),
+      row("b1", "Batch", "2026-09-13T00:00:00Z", "ABSENT", "2026-09-13T06:00:00Z"),
+    ]);
+    expect(event.at.toISOString()).toBe("2026-09-13T06:00:10.000Z");
+  });
+
+  it("groups dates that differ only by time of day on the same UTC day", () => {
+    const events = summarizeAttendance([
+      row("b1", "Batch", "2026-09-13T00:00:00Z", "PRESENT", "2026-09-13T06:00:00Z"),
+      row("b1", "Batch", "2026-09-13T05:30:00Z", "ABSENT", "2026-09-13T06:00:05Z"),
+    ]);
+    expect(events).toHaveLength(1);
+    expect(events[0].text).toBe("Batch attendance marked: 1 of 2 present.");
   });
 
   it("returns no events for no rows", () => {

@@ -21,6 +21,11 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * True for exactly one caller per throttle window. The cheap read is a fast
  * path (most page loads stop here); the conditional `updateMany` is the real
  * atomic claim, so two concurrent stale callers can never both proceed.
+ *
+ * The claim advances `lastNotificationSyncAt` BEFORE the sync work runs, so a
+ * sync that then fails is retried only after the throttle window. That is a
+ * deliberate backoff: a persistently failing sync must not re-run on every
+ * page load.
  */
 export async function claimNotificationSync(now: Date): Promise<boolean> {
   const row = await prisma.academySettings.findUnique({
@@ -45,7 +50,7 @@ export async function claimNotificationSync(now: Date): Promise<boolean> {
 }
 
 async function lowAttendanceInputs(today: Date, studentIds?: string[]) {
-  const since = new Date(today.getTime() - LOW_ATTENDANCE_WINDOW_DAYS * DAY_MS);
+  const since = new Date(today.getTime() - (LOW_ATTENDANCE_WINDOW_DAYS - 1) * DAY_MS);
   const students = await prisma.student.findMany({
     where: { deletedAt: null, status: "ACTIVE", ...(studentIds ? { id: { in: studentIds } } : {}) },
     select: {
@@ -62,6 +67,8 @@ async function lowAttendanceInputs(today: Date, studentIds?: string[]) {
   }));
 }
 
+// Note: the unscoped path claims (and so advances the throttle timestamp)
+// before doing any work; see claimNotificationSync.
 export async function syncTimeBasedNotifications(
   options: { now?: Date; studentIds?: string[] } = {}
 ): Promise<{ created: number } | null> {

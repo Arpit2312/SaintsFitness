@@ -51,6 +51,39 @@ describe("academySettingsSchema", () => {
     expect(academySettingsSchema.safeParse({ ...valid, logoUrl: "http://example.com/logo.png" }).success).toBe(false);
   });
 
+  it("normalises an upper-case https scheme", () => {
+    expect(academySettingsSchema.parse({ ...valid, logoUrl: "HTTPS://example.com/logo.png" }).logoUrl).toBe(
+      "https://example.com/logo.png"
+    );
+  });
+
+  it("enforces a 2048-character logo URL limit", () => {
+    const prefix = "https://example.com/";
+    const url = (length: number) => prefix + "a".repeat(length - prefix.length);
+    expect(url(2049)).toHaveLength(2049);
+    expect(academySettingsSchema.safeParse({ ...valid, logoUrl: url(2049) }).success).toBe(false);
+    expect(academySettingsSchema.safeParse({ ...valid, logoUrl: url(2048) }).success).toBe(true);
+  });
+
+  it("rejects mobile numbers with extra or non-digit characters", () => {
+    expect(academySettingsSchema.safeParse({ ...valid, mobile: "98765432101" }).success).toBe(false);
+    expect(academySettingsSchema.safeParse({ ...valid, mobile: "x9876543210" }).success).toBe(false);
+  });
+
+  it("accepts boundary lengths and rejects one over", () => {
+    expect(academySettingsSchema.safeParse({ ...valid, academyName: "A".repeat(60) }).success).toBe(true);
+    expect(academySettingsSchema.safeParse({ ...valid, academyName: "A".repeat(61) }).success).toBe(false);
+    expect(academySettingsSchema.safeParse({ ...valid, address: "a".repeat(300) }).success).toBe(true);
+    expect(academySettingsSchema.safeParse({ ...valid, address: "a".repeat(301) }).success).toBe(false);
+  });
+
+  it("enforces the 120-character email limit", () => {
+    const email120 = "a".repeat(108) + "@example.com";
+    expect(email120).toHaveLength(120);
+    expect(academySettingsSchema.safeParse({ ...valid, email: email120 }).success).toBe(true);
+    expect(academySettingsSchema.safeParse({ ...valid, email: "a" + email120 }).success).toBe(false);
+  });
+
   it("rejects dangerous or non-URL logo values", () => {
     expect(academySettingsSchema.safeParse({ ...valid, logoUrl: "javascript:alert(1)" }).success).toBe(false);
     expect(academySettingsSchema.safeParse({ ...valid, logoUrl: "not a url" }).success).toBe(false);
@@ -97,6 +130,10 @@ describe("receiptSettingsSchema", () => {
     expect(receiptSettingsSchema.safeParse({ ...valid, receiptFooter: "a".repeat(201) }).success).toBe(false);
   });
 
+  it("accepts a footer of exactly 200 characters", () => {
+    expect(receiptSettingsSchema.safeParse({ ...valid, receiptFooter: "a".repeat(200) }).success).toBe(true);
+  });
+
   it("requires include-year to be a boolean", () => {
     expect(receiptSettingsSchema.safeParse({ ...valid, receiptIncludeYear: "yes" }).success).toBe(false);
   });
@@ -134,6 +171,14 @@ describe("reminderSettingsSchema", () => {
     expect(
       reminderSettingsSchema.safeParse({ ...valid, reminderTemplate: `{name} {amount} ${"a".repeat(500)}` }).success
     ).toBe(false);
+  });
+
+  it("accepts a template of exactly 500 characters and rejects 501", () => {
+    const base = "{name} {amount} ";
+    const t500 = base + "a".repeat(500 - base.length);
+    expect(t500).toHaveLength(500);
+    expect(reminderSettingsSchema.safeParse({ ...valid, reminderTemplate: t500 }).success).toBe(true);
+    expect(reminderSettingsSchema.safeParse({ ...valid, reminderTemplate: t500 + "a" }).success).toBe(false);
   });
 
   it("accepts the shortest valid template", () => {
