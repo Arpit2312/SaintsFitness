@@ -61,6 +61,15 @@ export default async function StudentProfilePage({
         totalPaid: feeHistory.totalPaid.toNumber(),
         totalPending: feeHistory.totalPending.toNumber(),
         nextCoverageStart: feeHistory.nextCoverageStart,
+        payments: feeHistory.plan.payments.map((payment) => ({
+          id: payment.id,
+          amount: payment.amount.toNumber(),
+          paymentDate: payment.paymentDate,
+          mode: payment.mode,
+          coverageStart: payment.coverageStart,
+          coverageEnd: payment.coverageEnd,
+          receiptNumber: payment.receipt?.receiptNumber ?? null,
+        })),
       }
     : null;
 

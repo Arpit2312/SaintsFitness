@@ -108,8 +108,16 @@ export function AddPaymentDialog({
   async function onSubmit(data: PaymentInput) {
     setSubmitting(true);
     try {
-      await createPayment(studentId, data);
-      toast.success("Payment recorded");
+      const payment = await createPayment(studentId, data);
+      // The receipt page is a standalone printable page: open it in a new tab.
+      toast.success("Payment recorded", {
+        description: payment.receiptNumber ? `Receipt ${payment.receiptNumber}` : undefined,
+        duration: 12000,
+        action: {
+          label: "View Receipt",
+          onClick: () => window.open(`/receipts/${payment.id}`, "_blank", "noopener,noreferrer"),
+        },
+      });
       onOpenChange(false);
       onSuccess?.();
     } catch {

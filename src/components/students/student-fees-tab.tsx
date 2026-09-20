@@ -6,6 +6,7 @@ import { Wallet, Plus, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/empty-state";
 import { FeeHistoryTable, type SerializedPeriod } from "@/components/fees/fee-history-table";
+import { PaymentsTable, type SerializedPayment } from "@/components/fees/payments-table";
 import { FeePlanFormDialog } from "@/components/fees/fee-plan-form-dialog";
 import { AddPaymentDialog } from "@/components/fees/add-payment-dialog";
 import type { FeeFrequency } from "@prisma/client";
@@ -30,6 +31,7 @@ type SerializedFeeHistory = {
   totalPaid: number;
   totalPending: number;
   nextCoverageStart: Date;
+  payments: SerializedPayment[];
 } | null;
 
 export function StudentFeesTab({
@@ -62,7 +64,7 @@ export function StudentFeesTab({
     );
   }
 
-  const { plan, periods, totalPaid, totalPending, nextCoverageStart } = feeHistory;
+  const { plan, periods, totalPaid, totalPending, nextCoverageStart, payments } = feeHistory;
 
   return (
     <div className="space-y-4">
@@ -84,6 +86,8 @@ export function StudentFeesTab({
       </div>
 
       <FeeHistoryTable periods={periods} totalPaid={totalPaid} totalPending={totalPending} />
+
+      <PaymentsTable payments={payments} />
 
       <FeePlanFormDialog
         open={planDialogOpen}

@@ -11,7 +11,12 @@ import { computeFeeHistory, nextCoverageStartFromPeriods } from "@/lib/fees/fee-
 export async function getStudentFeeHistory(studentId: string) {
   const plan = await prisma.feePlan.findUnique({
     where: { studentId, student: { deletedAt: null } },
-    include: { payments: true },
+    // Receipts ride along so the Fees tab can link each payment to its
+    // receipt; newest first (createdAt breaks same-day ties). computeFeeHistory
+    // sorts the payments itself, so this order does not affect the totals.
+    include: {
+      payments: { include: { receipt: true }, orderBy: [{ paymentDate: "desc" }, { createdAt: "desc" }] },
+    },
   });
   if (!plan) return null;
 

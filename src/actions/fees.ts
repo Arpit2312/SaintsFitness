@@ -127,5 +127,6 @@ export async function createPayment(studentId: string, input: PaymentInput) {
   // The header notification badge lives in the shared layout, and notifyPaymentReceived just wrote a notification.
   revalidatePath("/", "layout");
 
-  return payment;
+  // Only what the UI needs (to open the receipt): plain values, no Decimal.
+  return { id: payment.id, receiptNumber: payment.receipt?.receiptNumber ?? null };
 }
