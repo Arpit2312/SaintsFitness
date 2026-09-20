@@ -50,18 +50,21 @@ export async function saveFeePlan(studentId: string, input: FeePlanInput) {
 export async function createPayment(studentId: string, input: PaymentInput) {
   const data = paymentSchema.parse(input);
 
-  const student = await prisma.student.findUnique({
-    where: { id: studentId, deletedAt: null },
-    select: { id: true, name: true },
-  });
+  // Independent lookups: run together (one network round trip, not two). The
+  // checks below keep the original order, so "Student not found." still wins.
+  const [student, plan] = await Promise.all([
+    prisma.student.findUnique({
+      where: { id: studentId, deletedAt: null },
+      select: { id: true, name: true },
+    }),
+    prisma.feePlan.findUnique({
+      where: { studentId },
+      include: { payments: true },
+    }),
+  ]);
   if (!student) {
     throw new Error("Student not found.");
   }
-
-  const plan = await prisma.feePlan.findUnique({
-    where: { studentId },
-    include: { payments: true },
-  });
   if (!plan) {
     throw new Error("This student doesn't have a fee plan set up yet.");
   }
