@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { isActiveRoute } from "@/lib/nav";
-import { useMobileNav } from "@/components/layout/mobile-nav";
+import { focusMenuButton, useMobileNav } from "@/components/layout/mobile-nav";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -39,6 +39,16 @@ export function Sidebar({ academyName, logoUrl }: { academyName: string; logoUrl
   // (the `md:` classes below); the phone drawer always shows full labels.
   const [collapsed, setCollapsed] = useState(false);
   const { open, setOpen } = useMobileNav();
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Move focus into the drawer when it opens so keyboard users land in the menu.
+  // Wait briefly: the drawer is still visibility:hidden until its open transition
+  // has progressed past its first frame, and a hidden element can't take focus.
+  useEffect(() => {
+    if (!open) return;
+    const timer = setTimeout(() => closeButtonRef.current?.focus(), 50);
+    return () => clearTimeout(timer);
+  }, [open]);
 
   return (
     <aside
@@ -46,7 +56,7 @@ export function Sidebar({ academyName, logoUrl }: { academyName: string; logoUrl
       className={cn(
         // Below md: an off-canvas drawer over the page. From md: a static column.
         "fixed inset-y-0 left-0 z-40 flex h-dvh w-64 flex-col border-r border-card-border bg-background",
-        "transition-[transform,width,visibility] duration-200 md:static md:z-auto",
+        "transition-[translate,width,visibility] duration-200 md:static md:z-auto",
         open ? "translate-x-0" : "-translate-x-full max-md:invisible md:translate-x-0",
         collapsed ? "md:w-16" : "md:w-64"
       )}
@@ -79,8 +89,12 @@ export function Sidebar({ academyName, logoUrl }: { academyName: string; logoUrl
           {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
         </button>
         <button
+          ref={closeButtonRef}
           type="button"
-          onClick={() => setOpen(false)}
+          onClick={() => {
+            setOpen(false);
+            focusMenuButton();
+          }}
           className="rounded-md p-1 text-muted outline-none hover:text-gold focus-visible:ring-2 focus-visible:ring-ring/50 md:hidden"
           aria-label="Close menu"
         >
