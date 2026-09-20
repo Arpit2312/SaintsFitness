@@ -85,7 +85,7 @@ export function ReceiptSettingsForm({ initial, year }: { initial: FormState; yea
           onCheckedChange={(checked) => setForm((f) => ({ ...f, receiptIncludeYear: checked === true }))}
           disabled={submitting}
         />
-        <Label htmlFor="receiptIncludeYear">Include the year in receipt numbers</Label>
+        <Label htmlFor="receiptIncludeYear">Include Year in Receipt Numbers</Label>
       </div>
       {preview ? (
         <p className="text-sm text-muted">

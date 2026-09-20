@@ -44,7 +44,7 @@ export function Sidebar({ academyName, logoUrl }: { academyName: string; logoUrl
     >
       <div className="flex items-center justify-between p-4">
         {!collapsed && (
-          <span className="flex min-w-0 items-center gap-2 truncate text-lg font-semibold text-gold">
+          <span className="flex min-w-0 items-center gap-2 text-lg font-semibold text-gold">
             {logoUrl && (
               // eslint-disable-next-line @next/next/no-img-element -- admin-configured external logo; next/image would need every host allow-listed
               <img
@@ -55,7 +55,8 @@ export function Sidebar({ academyName, logoUrl }: { academyName: string; logoUrl
                 className="h-7 w-7 shrink-0 rounded object-contain"
               />
             )}
-            {academyName}
+            {/* truncate needs its own block-level span: it has no effect on a flex container's text */}
+            <span className="min-w-0 truncate">{academyName}</span>
           </span>
         )}
         <button

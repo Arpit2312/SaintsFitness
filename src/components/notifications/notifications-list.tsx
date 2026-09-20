@@ -99,7 +99,7 @@ export function NotificationsList({
                   variant="outline"
                   size="sm"
                   className="shrink-0"
-                  aria-label={`Mark as read: ${n.message}`}
+                  aria-label={`Mark Read: ${n.message}`}
                   onClick={() => handleMarkRead(n.id)}
                   disabled={pendingId === n.id}
                 >
